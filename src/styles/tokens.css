@@ -1,0 +1,180 @@
+/**
+ * Movie Night — House Lights Down design tokens
+ * Canonical, framework-independent design values.
+ */
+
+:root {
+  /* Primitive colour: auditorium neutrals, tinted toward oxblood. */
+  --auditorium-950: oklch(12% 0.018 330);
+  --auditorium-900: oklch(16% 0.022 330);
+  --auditorium-850: oklch(20% 0.026 330);
+  --auditorium-800: oklch(24% 0.03 330);
+  --auditorium-700: oklch(32% 0.035 330);
+  --auditorium-500: oklch(51% 0.035 330);
+  --auditorium-300: oklch(72% 0.026 330);
+  --auditorium-200: oklch(82% 0.02 330);
+  --auditorium-100: oklch(91% 0.014 330);
+
+  /* Primitive colour: theatre materials. */
+  --velvet-900: oklch(19% 0.07 10);
+  --velvet-800: oklch(25% 0.105 10);
+  --velvet-700: oklch(32% 0.13 10);
+  --velvet-600: oklch(40% 0.155 12);
+  --velvet-500: oklch(49% 0.18 15);
+  --signal-700: oklch(43% 0.18 24);
+  --signal-600: oklch(50% 0.205 25);
+  --signal-500: oklch(58% 0.22 27);
+  --brass-700: oklch(52% 0.09 75);
+  --brass-600: oklch(63% 0.11 77);
+  --brass-500: oklch(72% 0.12 80);
+  --brass-300: oklch(84% 0.075 85);
+  --marquee-50: oklch(97% 0.026 96);
+  --marquee-100: oklch(94% 0.038 96);
+  --marquee-150: oklch(91% 0.046 94);
+  --marquee-200: oklch(87% 0.05 92);
+  --ink-900: oklch(17% 0.02 20);
+  --ink-800: oklch(23% 0.028 20);
+
+  /* Primitive semantic status colours. */
+  --success-600: oklch(49% 0.11 150);
+  --warning-600: oklch(55% 0.12 75);
+  --error-600: oklch(48% 0.17 28);
+  --info-600: oklch(48% 0.09 240);
+
+  /* Semantic colour: default auditorium environment. */
+  --color-surface-canvas: var(--auditorium-950);
+  --color-surface-raised: var(--auditorium-900);
+  --color-surface-high: var(--auditorium-850);
+  --color-border-dark: var(--auditorium-800);
+  --color-text-primary: var(--auditorium-100);
+  --color-text-secondary: var(--auditorium-200);
+  --color-text-tertiary: var(--auditorium-300);
+  --color-velvet: var(--velvet-700);
+  --color-velvet-deep: var(--velvet-900);
+  --color-text-on-velvet: var(--marquee-100);
+  --color-action-on-dark: oklch(70% 0.18 24);
+
+  /* Semantic colour: illuminated marquee and screen. */
+  --color-surface-marquee: var(--marquee-50);
+  --color-surface-marquee-muted: var(--marquee-100);
+  --color-surface-marquee-strong: var(--marquee-150);
+  --color-surface-marquee-hover: var(--marquee-200);
+  --color-surface-screen: var(--marquee-50);
+  --color-screen-edge: var(--marquee-200);
+  --color-text-on-marquee: var(--ink-900);
+  --color-text-on-marquee-muted: var(--ink-800);
+  --color-ink-soft: var(--ink-800);
+  --color-border-marquee: oklch(78% 0.018 90);
+  --color-border-marquee-strong: oklch(59% 0.024 60);
+  --color-action-primary: var(--signal-500);
+  --color-action-primary-on-marquee: var(--signal-700);
+  --color-action-primary-hover: var(--signal-600);
+  --color-text-on-action: var(--marquee-50);
+
+  /* Semantic colour: structural accents and feedback. */
+  --color-accent-brass: var(--brass-500);
+  --color-accent-brass-light: var(--brass-300);
+  --color-accent-brass-muted: var(--brass-700);
+  --color-text-on-brass: var(--ink-900);
+  --color-frame: var(--ink-900);
+  --color-focus-ring-on-dark: var(--brass-500);
+  --color-focus-ring-on-light: var(--ink-900);
+  --color-focus-ring: var(--color-focus-ring-on-dark);
+  --color-success: var(--success-600);
+  --color-warning: var(--warning-600);
+  --color-error: var(--error-600);
+  --color-info: var(--info-600);
+
+  /* Typography. Load licensed font files at the application boundary. */
+  --font-display: "Anton", "Nimbus Sans Narrow", sans-serif;
+  --font-body: "Commissioner", "Avenir Next", "Segoe UI", sans-serif;
+  --font-weight-body-dark: 350;
+  --font-weight-regular: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+  --font-weight-display: 400;
+
+  --text-caption: 0.75rem;
+  --text-label: 0.875rem;
+  --text-body: 1rem;
+  --text-lead: 1.25rem;
+  --text-heading: 1.5625rem;
+  --text-title: 2.441rem;
+  --text-feature: 3.815rem;
+
+  --leading-none: 1;
+  --leading-tight: 1.15;
+  --leading-body: 1.5;
+  --leading-body-dark: 1.58;
+  --leading-display: 0.96;
+  --tracking-display-tight: -0.025em;
+  --tracking-display: 0.0125em;
+  --tracking-label: 0.08em;
+  --tracking-body: 0;
+
+  /* Spacing: 4px-derived semantic scale. */
+  --space-2xs: 0.25rem;
+  --space-xs: 0.5rem;
+  --space-sm: 0.75rem;
+  --space-md: 1rem;
+  --space-lg: 1.5rem;
+  --space-xl: 2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4rem;
+  --space-4xl: 6rem;
+
+  /* Shape and line. */
+  --radius-control: 0.125rem;
+  --radius-screen: 0.25rem;
+  --radius-frame: 0.125rem;
+  --border-thin: 1px;
+  --border-strong: 2px;
+  --border-architectural: 0.25rem;
+  --frame-width: clamp(0.6rem, 2vw, 1.1rem);
+  --focus-ring-width: 2px;
+  --focus-ring-offset: 3px;
+
+  /* Purposeful physical-light effects, not generic card elevation. */
+  --shadow-marquee:
+    0 0 2.5rem oklch(84% 0.075 85 / 0.18),
+    0 1rem 3rem oklch(12% 0.018 330 / 0.24);
+  --shadow-screen:
+    inset 0 0 2rem oklch(87% 0.05 92 / 0.32),
+    0 0 3rem oklch(84% 0.075 85 / 0.14);
+  --shadow-house-light: 0 0 1.25rem oklch(84% 0.075 85 / 0.46);
+
+  /* Motion. */
+  --duration-instant: 80ms;
+  --duration-fast: 120ms;
+  --duration-moderate: 240ms;
+  --duration-moderate-exit: 180ms;
+  --duration-layout: 420ms;
+  --duration-cinematic: 700ms;
+  --ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-quart: cubic-bezier(0.5, 0, 0.75, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+
+  /* Layout and component dimensions. */
+  --content-max: 72rem;
+  --measure-reading: 68ch;
+  --page-gutter: clamp(1rem, 4vw, 3rem);
+  --section-space: clamp(4rem, 10vw, 8rem);
+  --size-target-min: 2.75rem;
+  --board-row: 2.25rem;
+  --aspect-screen: 16 / 9;
+
+  /* Semantic stacking. */
+  --z-base: 0;
+  --z-sticky: 20;
+  --z-overlay: 40;
+  --z-toast: 60;
+  --z-tooltip: 80;
+  --z-skip-link: 100;
+}
+
+[data-surface="marquee"] {
+  --color-focus-ring: var(--color-focus-ring-on-light);
+  font-weight: var(--font-weight-regular);
+}

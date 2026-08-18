@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="utf-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
+    <meta
+      name="description"
+      content="Movie Night's House Lights Down design-system specimen."
+    />
+    <title>House Lights Down — Movie Night design system</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Anton&amp;family=Commissioner:wght@350;400;500;600;700&amp;display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="specimen.css" />
+  </head>
+  <body>
+    <a class="skip-link" href="#main-content"
+      >Skip to design-system specimens</a
+    >
+
+    <header class="masthead">
+      <div class="masthead__inner">
+        <p class="kicker">Movie Night · Design system 0.1</p>
+        <h1>
+          <span>House</span>
+          <span>Lights</span>
+          <span>Down</span>
+        </h1>
+        <p class="masthead__lede">
+          From the bright promise of the foyer board to one film on the big
+          screen. Decisive, theatrical, tactile.
+        </p>
+      </div>
+      <div class="ceiling-lights" aria-hidden="true">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+    </header>
+
+    <main id="main-content">
+      <section
+        class="specimen-section specimen-section--marquee"
+        aria-labelledby="marquee-title"
+      >
+        <div class="section-intro">
+          <p class="kicker kicker--dark">01 · Foyer light</p>
+          <h2 id="marquee-title">The programme board gathers preferences.</h2>
+          <p>
+            Familiar form semantics sit inside a luminous, physical frame. One
+            short decision at a time keeps the experience moving.
+          </p>
+        </div>
+
+        <form class="marquee-board" data-surface="marquee">
+          <div class="marquee-board__header">
+            <p>Now choosing</p>
+            <h3>What's the mood?</h3>
+            <p>Pick the feeling you want from tonight's film.</p>
+          </div>
+
+          <fieldset class="programme-row">
+            <legend class="visually-hidden">Movie mood</legend>
+            <div class="choice-grid">
+              <label class="programme-choice">
+                <input type="radio" name="mood" value="edge" checked />
+                <span>On the edge</span>
+              </label>
+              <label class="programme-choice">
+                <input type="radio" name="mood" value="laugh" />
+                <span>Make us laugh</span>
+              </label>
+              <label class="programme-choice">
+                <input type="radio" name="mood" value="escape" />
+                <span>Pure escape</span>
+              </label>
+              <label class="programme-choice">
+                <input type="radio" name="mood" value="move" />
+                <span>Move us</span>
+              </label>
+            </div>
+          </fieldset>
+
+          <div class="marquee-board__footer">
+            <div class="programme-progress" aria-label="Preference 1 of 4">
+              <span class="programme-progress__copy">Preference 1 of 4</span>
+              <span class="programme-progress__marks" aria-hidden="true">
+                <i class="is-current"></i><i></i><i></i><i></i>
+              </span>
+            </div>
+            <button class="feature-action" type="button">
+              Choose this mood
+            </button>
+          </div>
+        </form>
+      </section>
+
+      <section
+        class="specimen-section specimen-section--screen"
+        aria-labelledby="screen-title"
+      >
+        <div class="section-intro section-intro--light">
+          <p class="kicker">02 · Feature presentation</p>
+          <h2 id="screen-title">The recommendation owns the screen.</h2>
+          <p>
+            Space, light, and a single title replace the catalogue. The reason
+            for the choice is visible without becoming a wall of metadata.
+          </p>
+        </div>
+
+        <div class="auditorium-frame">
+          <article
+            class="cinema-screen"
+            data-surface="marquee"
+            aria-labelledby="feature-title"
+          >
+            <div class="cinema-screen__programme">
+              <p class="feature-eyebrow">Tonight's feature</p>
+              <h3 id="feature-title">Rear Window</h3>
+              <p class="feature-meta">
+                <span class="visually-hidden"
+                  >1954, 1 hour 52 minutes, rated PG</span
+                >
+                <span class="feature-meta__item" aria-hidden="true">1954</span>
+                <span class="feature-meta__item" aria-hidden="true"
+                  >1 hour 52 minutes</span
+                >
+                <span class="feature-meta__item" aria-hidden="true">PG</span>
+              </p>
+              <p class="feature-reason">
+                A tightly wound mystery with wit, glamour, and exactly the kind
+                of creeping tension you asked for.
+              </p>
+              <div class="feature-actions">
+                <button class="feature-action" type="button">
+                  See where to watch
+                </button>
+                <button class="quiet-action" type="button">
+                  Try another film
+                </button>
+              </div>
+            </div>
+            <dl class="feature-details">
+              <div>
+                <dt>Directed by</dt>
+                <dd>Alfred Hitchcock</dd>
+              </div>
+              <div>
+                <dt>Best for</dt>
+                <dd>A clever slow burn</dd>
+              </div>
+              <div>
+                <dt>Your match</dt>
+                <dd>Suspenseful · Classic</dd>
+              </div>
+            </dl>
+          </article>
+        </div>
+      </section>
+
+      <section
+        class="specimen-section specimen-section--foundations"
+        aria-labelledby="foundations-title"
+      >
+        <div class="section-intro section-intro--light">
+          <p class="kicker">03 · Foundations</p>
+          <h2 id="foundations-title">A small cast with clear roles.</h2>
+          <p>
+            Oxblood, warm light, ink, and brass do the work. Accent is rare.
+          </p>
+        </div>
+
+        <div class="foundation-grid">
+          <div class="palette" aria-label="Core colour palette">
+            <div class="swatch swatch--auditorium">
+              <span>Auditorium</span><code>canvas</code>
+            </div>
+            <div class="swatch swatch--velvet">
+              <span>Velvet</span><code>brand</code>
+            </div>
+            <div class="swatch swatch--marquee">
+              <span>Marquee</span><code>focus surface</code>
+            </div>
+            <div class="swatch swatch--signal">
+              <span>Signal</span><code>primary action</code>
+            </div>
+            <div class="swatch swatch--brass">
+              <span>Brass</span><code>structure</code>
+            </div>
+          </div>
+
+          <div class="type-specimen">
+            <p class="feature-eyebrow">Display · Anton</p>
+            <p class="type-specimen__display">Now Showing</p>
+            <p class="feature-eyebrow">Interface · Commissioner</p>
+            <p class="type-specimen__body">
+              The right film for this room, this mood, and tonight—not another
+              hundred things you could watch.
+            </p>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="page-footer">
+      <p>House Lights Down · Movie Night</p>
+      <p>Canonical tokens: <code>src/styles/tokens.css</code></p>
+    </footer>
+  </body>
+</html>

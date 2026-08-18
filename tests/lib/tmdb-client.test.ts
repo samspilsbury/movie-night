@@ -1,0 +1,156 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import type { MovieIntent } from "@/features/recommendations/types";
+import { discoverMovies, resolveReferenceExclusions } from "@/lib/tmdb/client";
+
+const baseIntent: MovieIntent = {
+  includedGenres: ["thriller", "science fiction"],
+  excludedGenres: ["horror"],
+  moods: ["tense"],
+  keywordTerms: [],
+  referenceMovies: [],
+  minimumYear: 1990,
+  maximumYear: null,
+  maximumRuntimeMinutes: 120,
+  originalLanguage: null,
+};
+
+type TmdbMovieFixture = {
+  id: number;
+  title: string;
+  original_title: string;
+  overview: string;
+  release_date: string;
+  poster_path: string | null;
+  backdrop_path: string | null;
+  genre_ids: number[];
+  vote_average: number;
+  vote_count: number;
+  popularity: number;
+};
+
+function tmdbMovie(overrides: Partial<TmdbMovieFixture>) {
+  return {
+    id: 1,
+    title: "Example",
+    original_title: "Example",
+    overview: "Example overview",
+    release_date: "2020-01-01",
+    poster_path: null,
+    backdrop_path: null,
+    genre_ids: [53],
+    vote_average: 7.8,
+    vote_count: 1_000,
+    popularity: 20,
+    ...overrides,
+  };
+}
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+describe("TMDB client", () => {
+  beforeEach(() => {
+    vi.stubEnv("MOVIE_NIGHT_DEMO_MODE", "false");
+    vi.stubEnv("MOVIE_NIGHT_REGION", "GB");
+    vi.stubEnv("TMDB_API_TOKEN", "test-token");
+    vi.stubEnv("OPENAI_API_KEY", "test-key");
+    vi.stubEnv("OPENAI_MODEL", "gpt-5.6-luna");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("applies the strict quality policy in the initial Discover request", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        results: Array.from({ length: 10 }, (_, index) =>
+          tmdbMovie({
+            id: index + 1,
+            title: `Film ${index + 1}`,
+            vote_count: 1_000 + index,
+          }),
+        ),
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const candidates = await discoverMovies(baseIntent, 0, [2]);
+    const [request, options] = fetchMock.mock.calls[0] as [
+      URL,
+      RequestInit & { next?: { revalidate: number } },
+    ];
+    const url = new URL(request);
+
+    expect(url.pathname).toBe("/3/discover/movie");
+    expect(url.searchParams.get("vote_average.gte")).toBe("7.2");
+    expect(url.searchParams.get("vote_count.gte")).toBe("500");
+    expect(url.searchParams.get("with_genres")).toBe("53|878");
+    expect(url.searchParams.get("without_genres")).toBe("27");
+    expect(url.searchParams.get("with_runtime.lte")).toBe("120");
+    expect(url.searchParams.get("primary_release_date.gte")).toBe("1990-01-01");
+    expect(url.searchParams.get("primary_release_date.lte")).toBe(
+      new Date().toISOString().slice(0, 10),
+    );
+    expect(url.searchParams.has("region")).toBe(false);
+    expect(options.headers).toMatchObject({
+      Authorization: "Bearer test-token",
+    });
+    expect(options.next?.revalidate).toBe(3_600);
+    expect(candidates).toHaveLength(8);
+    expect(candidates.map((movie) => movie.id)).not.toContain(2);
+  });
+
+  it("selects the exact referenced title and excludes its collection", async () => {
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          results: [
+            tmdbMovie({ id: 11, title: "Inception: The Cobol Job" }),
+            tmdbMovie({
+              id: 12,
+              title: "Inception",
+              release_date: "2010-07-16",
+            }),
+          ],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ id: 12, belongs_to_collection: { id: 99 } }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({ parts: [{ id: 12 }, { id: 13 }, { id: 14 }] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    const exclusions = await resolveReferenceExclusions({
+      ...baseIntent,
+      referenceMovies: [{ title: "Inception", year: 2010 }],
+    });
+
+    expect(exclusions).toEqual([12, 13, 14]);
+    expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/movie/12");
+    expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/collection/99");
+  });
+
+  it("turns TMDB authentication failures into safe provider errors", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(jsonResponse({ success: false }, 401)),
+    );
+
+    await expect(discoverMovies(baseIntent, 0, [])).rejects.toMatchObject({
+      provider: "tmdb",
+      code: "authentication",
+      responseStatus: 503,
+    });
+  });
+});
