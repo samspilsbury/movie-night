@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   applyCandidateGrades,
+  applyCandidateGradesWithFallback,
   candidateScore,
   deterministicGrade,
   genreNamesToIds,
@@ -233,5 +234,105 @@ describe("recommendation quality", () => {
     expect(deterministicGrade(parasite, request).relevanceScore).toBeLessThan(
       55,
     );
+  });
+
+  it("recognises catalogue plot-twist evidence for a romcom fallback", () => {
+    const request = intent({
+      requiredGenres: ["romance", "comedy"],
+      preferences: [
+        {
+          category: "theme",
+          value: "major unexpected plot twist",
+          priority: "primary",
+          source: "explicit",
+        },
+      ],
+      keywordTerms: ["plot twist", "unexpected revelation"],
+    });
+    const twistyRomcom = recommendation({
+      title: "A Twisty Romance",
+      overview: "A couple's courtship leads to a startling final reveal.",
+      genres: ["Romance", "Comedy"],
+      genreIds: [10749, 35],
+      keywordNames: ["plot twist", "romantic comedy"],
+    });
+
+    const grade = deterministicGrade(twistyRomcom, request);
+
+    expect(grade.missingPrimaryCriteria).toEqual([]);
+    expect(grade.relevanceScore).toBeGreaterThan(80);
+  });
+
+  it("promotes a romcom with an unexpected turn before generic popular matches", () => {
+    const request = intent({
+      requiredGenres: ["romance", "comedy"],
+      preferences: [
+        {
+          category: "theme",
+          value: "prominent unexpected plot twist",
+          priority: "primary",
+          source: "explicit",
+        },
+      ],
+      keywordTerms: ["plot twist", "unexpected twist", "surprise ending"],
+    });
+    const generic = candidate({
+      id: 1,
+      title: "A Popular Romance",
+      overview: "A couple fall in love while chasing their dreams.",
+      genreIds: [10749, 35],
+      voteAverage: 8.5,
+      voteCount: 30_000,
+    });
+    const unexpected = candidate({
+      id: 2,
+      title: "An Unexpected Romance",
+      overview:
+        "A happily engaged couple is tested when an unexpected turn sends their wedding week off the rails.",
+      genreIds: [10749, 35],
+      voteAverage: 6.5,
+      voteCount: 200,
+    });
+
+    expect(rankCandidatePool([generic, unexpected], request, [])[0]?.id).toBe(
+      unexpected.id,
+    );
+  });
+
+  it("recovers with evidence scoring when semantic grades reject every candidate", () => {
+    const request = intent({
+      requiredGenres: ["romance", "comedy"],
+      preferences: [
+        {
+          category: "theme",
+          value: "plot twist",
+          priority: "primary",
+          source: "explicit",
+        },
+      ],
+    });
+    const movie = recommendation({
+      title: "The Drama",
+      overview:
+        "A happily engaged couple is tested when an unexpected turn sends their wedding week off the rails.",
+      genres: ["Romance", "Comedy"],
+      genreIds: [10749, 35],
+    });
+
+    const result = applyCandidateGradesWithFallback([movie], request, [
+      {
+        id: movie.id,
+        relevanceScore: 30,
+        matchedCriteria: ["romance", "comedy"],
+        missingPrimaryCriteria: ["plot twist"],
+        contradictions: [],
+        matchReason: "A genre match without enough twist evidence.",
+      },
+    ]);
+
+    expect(result.usedFallback).toBe(true);
+    expect(result.recommendations.map((candidate) => candidate.title)).toEqual([
+      "The Drama",
+    ]);
   });
 });

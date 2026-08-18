@@ -16,6 +16,8 @@ import { getServerEnv } from "@/lib/env";
 import { ProviderError } from "@/lib/provider-error";
 
 const TMDB_API_BASE = "https://api.themoviedb.org/3";
+const TMDB_REQUEST_TIMEOUT_MS = 6_000;
+const MAX_KEYWORD_LOOKUPS = 3;
 
 type TmdbDiscoverMovie = {
   id: number;
@@ -101,7 +103,7 @@ async function tmdbFetch<T>(
         Accept: "application/json",
       },
       next: { revalidate: 3600 },
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(TMDB_REQUEST_TIMEOUT_MS),
     });
   } catch (error) {
     const timedOut = error instanceof Error && error.name === "TimeoutError";
@@ -191,8 +193,8 @@ function toCandidate(
 }
 
 async function resolveKeywordIds(terms: string[]): Promise<number[]> {
-  const results = await Promise.all(
-    terms.slice(0, 8).map(async (term) => {
+  const results = await Promise.allSettled(
+    terms.slice(0, MAX_KEYWORD_LOOKUPS).map(async (term) => {
       const response = await tmdbFetch<{
         results: Array<{ id: number; name: string }>;
       }>("/search/keyword", { query: term, page: 1 });
@@ -203,7 +205,15 @@ async function resolveKeywordIds(terms: string[]): Promise<number[]> {
       return exact?.id ?? response.results[0]?.id ?? null;
     }),
   );
-  return [...new Set(results.filter((id): id is number => id !== null))];
+  return [
+    ...new Set(
+      results.flatMap((result) =>
+        result.status === "fulfilled" && result.value !== null
+          ? [result.value]
+          : [],
+      ),
+    ),
+  ];
 }
 
 export async function resolveReferenceExclusions(
@@ -256,12 +266,6 @@ function discoveryLanes(
         genres: genreQuery,
         keywords: keywordQuery,
       },
-      {
-        source: "focused",
-        page: 2,
-        genres: genreQuery,
-        keywords: keywordQuery,
-      },
       { source: "keyword", page: 1, keywords: keywordQuery },
       { source: "genre", page: 1, genres: genreQuery },
     ];
@@ -271,7 +275,6 @@ function discoveryLanes(
       { source: "keyword", page: 1, keywords: keywordQuery },
       { source: "keyword", page: 2, keywords: keywordQuery },
       { source: "broad", page: 1 },
-      { source: "broad", page: 2 },
     ];
   }
   if (genreQuery) {
@@ -279,10 +282,9 @@ function discoveryLanes(
       { source: "genre", page: 1, genres: genreQuery },
       { source: "genre", page: 2, genres: genreQuery },
       { source: "broad", page: 1 },
-      { source: "broad", page: 2 },
     ];
   }
-  return [1, 2, 3, 4].map((page) => ({ source: "broad" as const, page }));
+  return [1, 2, 3].map((page) => ({ source: "broad" as const, page }));
 }
 
 export async function discoverCandidatePool(
@@ -304,7 +306,7 @@ export async function discoverCandidatePool(
   const maximumReleaseDate =
     requestedMaximumDate < today ? requestedMaximumDate : today;
 
-  const responses = await Promise.all(
+  const laneResults = await Promise.allSettled(
     discoveryLanes(genreQuery, keywordQuery).map(async (lane) => {
       const response = await tmdbFetch<{ results: TmdbDiscoverMovie[] }>(
         "/discover/movie",
@@ -331,8 +333,16 @@ export async function discoverCandidatePool(
     }),
   );
 
+  const successfulLanes = laneResults.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
+  );
+  if (!successfulLanes.length) {
+    const failure = laneResults.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+  }
+
   const deduplicated = new Map<number, MovieCandidate>();
-  for (const candidate of responses.flat()) {
+  for (const candidate of successfulLanes.flat()) {
     const existing = deduplicated.get(candidate.id);
     if (existing) {
       existing.discoverySources = [

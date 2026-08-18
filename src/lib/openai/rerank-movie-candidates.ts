@@ -37,6 +37,8 @@ Rules:
 - Give each candidate an independent 0-100 relevance score. Missing a primary preference should normally keep the score below 55.
 - matchReason must be one concise, viewer-facing sentence grounded in matchedCriteria. Do not mention scoring, filtering, APIs, or missing criteria.`;
 
+export const SEMANTIC_RERANK_TIMEOUT_MS = 9_000;
+
 function candidateEvidence(candidate: MovieRecommendation) {
   return {
     id: candidate.id,
@@ -66,13 +68,13 @@ export async function rerankMovieCandidates(
 
   const client = new OpenAI({
     apiKey: env.OPENAI_API_KEY,
-    maxRetries: 1,
-    timeout: 20_000,
+    maxRetries: 0,
+    timeout: SEMANTIC_RERANK_TIMEOUT_MS,
   });
   const response = await client.responses.parse({
     model: env.OPENAI_MODEL,
     store: false,
-    max_output_tokens: 2_000,
+    max_output_tokens: 1_600,
     reasoning: { effort: "low" },
     input: [
       { role: "system", content: SYSTEM_PROMPT },

@@ -1,5 +1,5 @@
 import {
-  applyCandidateGrades,
+  applyCandidateGradesWithFallback,
   candidateScore,
   deterministicGrade,
   PRE_SHORTLIST_SIZE,
@@ -11,8 +11,16 @@ import type {
   RecommendationBatch,
 } from "./types";
 import { getDemoMovie } from "@/lib/demo/movies";
-import { rerankMovieCandidates } from "@/lib/openai/rerank-movie-candidates";
+import {
+  rerankMovieCandidates,
+  SEMANTIC_RERANK_TIMEOUT_MS,
+} from "@/lib/openai/rerank-movie-candidates";
 import { enrichMovieCandidates } from "@/lib/tmdb/client";
+
+type StageDetails = Record<string, boolean | number | string>;
+type StageLogger = (stage: string, details?: StageDetails) => void;
+
+const RERANK_DEADLINE_BUFFER_MS = 500;
 
 async function enrichShortlist(
   shortlist: Array<MovieCandidate | number>,
@@ -32,6 +40,8 @@ async function rankShortlist(
   candidates: MovieRecommendation[],
   intent: MovieIntent,
   demoMode: boolean,
+  deadlineAt: number,
+  onStage?: StageLogger,
 ): Promise<MovieRecommendation[]> {
   if (demoMode) {
     return candidates.slice(0, 5).map((candidate) => ({
@@ -43,19 +53,40 @@ async function rankShortlist(
   }
 
   let grades;
-  try {
-    grades = await rerankMovieCandidates(intent, candidates);
-  } catch (error) {
-    console.warn(
-      "Semantic candidate ranking failed; using deterministic ranking.",
-      error instanceof Error ? error.message : "Unknown ranking error",
-    );
+  let strategy = "deterministic_budget";
+  const hasRerankBudget =
+    deadlineAt - Date.now() >=
+    SEMANTIC_RERANK_TIMEOUT_MS + RERANK_DEADLINE_BUFFER_MS;
+
+  if (hasRerankBudget) {
+    try {
+      grades = await rerankMovieCandidates(intent, candidates);
+      strategy = "semantic";
+    } catch (error) {
+      console.warn(
+        "Semantic candidate ranking failed; using deterministic ranking.",
+        error instanceof Error ? error.message : "Unknown ranking error",
+      );
+      strategy = "deterministic_provider_fallback";
+    }
+  }
+
+  if (!grades) {
     grades = candidates.map((candidate) =>
       deterministicGrade(candidate, intent),
     );
   }
 
-  return applyCandidateGrades(candidates, intent, grades);
+  const ranked = applyCandidateGradesWithFallback(candidates, intent, grades);
+  if (ranked.usedFallback && strategy === "semantic") {
+    strategy = "deterministic_empty_fallback";
+  }
+
+  onStage?.("ranking_complete", {
+    candidates: candidates.length,
+    strategy,
+  });
+  return ranked.recommendations;
 }
 
 export async function buildRecommendationBatch({
@@ -63,11 +94,15 @@ export async function buildRecommendationBatch({
   intent,
   referenceExclusionIds,
   demoMode,
+  deadlineAt,
+  onStage,
 }: {
   pool: Array<MovieCandidate | number>;
   intent: MovieIntent;
   referenceExclusionIds: number[];
   demoMode: boolean;
+  deadlineAt?: number;
+  onStage?: StageLogger;
 }): Promise<RecommendationBatch> {
   const shortlist = pool.slice(0, PRE_SHORTLIST_SIZE);
   const enriched = (await enrichShortlist(shortlist, intent, demoMode)).map(
@@ -76,7 +111,17 @@ export async function buildRecommendationBatch({
       score: candidate.score || candidateScore(candidate, intent),
     }),
   );
-  const recommendations = await rankShortlist(enriched, intent, demoMode);
+  onStage?.("enrichment_complete", {
+    received: enriched.length,
+    requested: shortlist.length,
+  });
+  const recommendations = await rankShortlist(
+    enriched,
+    intent,
+    demoMode,
+    deadlineAt ?? Number.POSITIVE_INFINITY,
+    onStage,
+  );
   const selectedIds = new Set(recommendations.map((movie) => movie.id));
   const unassessedCandidates = pool.slice(shortlist.length);
   const assessedButUnselected = shortlist.filter((candidate) => {

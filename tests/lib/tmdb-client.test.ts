@@ -119,9 +119,53 @@ describe("TMDB client", () => {
       Authorization: "Bearer test-token",
     });
     expect(options.next?.revalidate).toBe(3_600);
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
     expect(candidates).toHaveLength(9);
     expect(candidates.map((movie) => movie.id)).not.toContain(2);
+  });
+
+  it("keeps useful candidates when individual keyword and discovery lanes fail", async () => {
+    const intent: MovieIntent = {
+      ...baseIntent,
+      keywordTerms: ["plot twist", "surprise revelation"],
+    };
+    const fetchMock = vi.fn().mockImplementation((request: URL) => {
+      const url = new URL(request);
+      if (url.pathname === "/3/search/keyword") {
+        return Promise.resolve(
+          url.searchParams.get("query") === "plot twist"
+            ? jsonResponse({ status_message: "Temporary failure" }, 503)
+            : jsonResponse({ results: [{ id: 42, name: "revelation" }] }),
+        );
+      }
+
+      const focusedLane =
+        url.searchParams.has("with_genres") &&
+        url.searchParams.has("with_keywords");
+      return Promise.resolve(
+        focusedLane
+          ? jsonResponse({ status_message: "Temporary failure" }, 503)
+          : jsonResponse({
+              results: [
+                tmdbMovie({
+                  id: url.searchParams.has("with_keywords") ? 21 : 22,
+                }),
+              ],
+            }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const candidates = await discoverCandidatePool(intent, []);
+    const paths = fetchMock.mock.calls.map(([request]) => new URL(request));
+
+    expect(
+      paths.filter((url) => url.pathname === "/3/search/keyword"),
+    ).toHaveLength(2);
+    expect(
+      paths.filter((url) => url.pathname === "/3/discover/movie"),
+    ).toHaveLength(3);
+    expect(candidates.map((movie) => movie.id)).toEqual([21, 22]);
   });
 
   it("selects the exact referenced title and excludes its collection", async () => {

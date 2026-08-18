@@ -6,6 +6,7 @@ import OpenAI, {
 import { zodTextFormat } from "openai/helpers/zod";
 
 import { movieIntentSchema } from "@/features/recommendations/schemas";
+import { normalizeMovieIntent } from "@/features/recommendations/normalize-intent";
 import type { MovieIntent } from "@/features/recommendations/types";
 import { getServerEnv } from "@/lib/env";
 import { ProviderError } from "@/lib/provider-error";
@@ -17,6 +18,7 @@ Rules:
 - Put every movie used as a comparison, example, positive reference, or negative reference in referenceMovies so it can be excluded.
 - Separate hard genre constraints from preferences. A directly requested genre ("a comedy") belongs in requiredGenres; a genre merely inferred from a mood, style, or reference belongs in preferredGenres.
 - Express every meaningful non-genre request in preferences. Preserve the user's actual meaning: mood, tone, theme, setting, cast, pace, or style. Mark directly stated, central requirements primary and explicit; mark helpful implications secondary and inferred.
+- Keep preferences independent and non-duplicative. Do not restate required genres inside a preference, and do not create several paraphrases of one requirement.
 - For a positive reference movie, add two to five broadly recognised similarityTraits that explain what the user is likely asking to carry over. Do not infer cast, director, franchise, or character names unless the user explicitly requests them.
 - Turn abstract intent into two to eight concrete, TMDB-searchable keyword concepts when they materially improve retrieval. Do not add unrelated concepts merely to fill the array.
 - Use only the allowed genre enum values.
@@ -27,7 +29,10 @@ Rules:
 - "sexy" is a primary tone preference. Add relevant concepts such as sensuality or eroticism, without treating any adult-rated drama as a match.
 - "chick flick" is a style request normally associated with female-centred relationships, romance, friendship, or comedy; it is not satisfied by an unrelated action film with incidental UK locations.
 - For "comedy like Anchorman with an all-star cast", require comedy and preserve absurdist ensemble comedy plus star-studded cast as primary preferences. A dark film merely tagged comedy is not a match.
+- For "a romcom but with a big twist", require romance and comedy and create one primary plot-twist preference. The genres are not a second style or tone preference.
 - Return empty arrays and nulls for unspecified criteria.`;
+
+const OPENAI_INTENT_TIMEOUT_MS = 10_000;
 
 function mapOpenAIError(error: unknown): never {
   if (error instanceof APIConnectionTimeoutError) {
@@ -103,8 +108,8 @@ export async function interpretMovieIntent(
 
   const client = new OpenAI({
     apiKey: env.OPENAI_API_KEY,
-    maxRetries: 2,
-    timeout: 20_000,
+    maxRetries: 0,
+    timeout: OPENAI_INTENT_TIMEOUT_MS,
   });
 
   let response;
@@ -130,5 +135,5 @@ export async function interpretMovieIntent(
     throw new Error("The movie brief could not be interpreted.");
   }
 
-  return movieIntentSchema.parse(response.output_parsed);
+  return normalizeMovieIntent(movieIntentSchema.parse(response.output_parsed));
 }

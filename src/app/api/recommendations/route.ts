@@ -15,7 +15,34 @@ import {
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
+const RECOMMENDATION_BUDGET_MS = 25_000;
+
+function errorKind(error: unknown): string {
+  if (error instanceof ProviderError) return `${error.provider}_${error.code}`;
+  if (error instanceof ZodError) return "validation";
+  return error instanceof Error ? error.name : "unknown";
+}
+
 export async function POST(request: Request) {
+  const requestId = crypto.randomUUID();
+  const startedAt = Date.now();
+  let previousStageAt = startedAt;
+  const deadlineAt = startedAt + RECOMMENDATION_BUDGET_MS;
+  const logStage = (
+    stage: string,
+    details: Record<string, boolean | number | string> = {},
+  ) => {
+    const now = Date.now();
+    console.info("Recommendation pipeline stage", {
+      requestId,
+      stage,
+      stageDurationMs: now - previousStageAt,
+      totalDurationMs: now - startedAt,
+      ...details,
+    });
+    previousStageAt = now;
+  };
+
   try {
     const body: unknown = await request.json();
     const input = recommendationRequestSchema.parse(body);
@@ -25,12 +52,18 @@ export async function POST(request: Request) {
       (env.demoMode
         ? demoIntent(input.prompt ?? "")
         : await interpretMovieIntent(input.prompt ?? ""));
+    logStage("intent_complete", {
+      source: input.intent ? "continuation" : env.demoMode ? "demo" : "model",
+    });
 
     const continuing = input.intent !== null && input.candidateIds.length > 0;
     const referenceExclusionIds =
       continuing || env.demoMode
         ? []
         : await resolveReferenceExclusions(intent);
+    logStage("reference_exclusions_complete", {
+      count: referenceExclusionIds.length,
+    });
     const allExcludedIds = [
       ...new Set([...input.excludedMovieIds, ...referenceExclusionIds]),
     ];
@@ -40,15 +73,26 @@ export async function POST(request: Request) {
       : env.demoMode
         ? getDemoCandidates(intent, allExcludedIds)
         : await discoverCandidatePool(intent, allExcludedIds);
+    logStage("candidate_pool_complete", {
+      candidates: pool.length,
+      continuing,
+    });
     const response = await buildRecommendationBatch({
       pool,
       intent,
       referenceExclusionIds,
       demoMode: env.demoMode,
+      deadlineAt,
+      onStage: logStage,
+    });
+    logStage("request_complete", {
+      recommendations: response.recommendations.length,
+      remainingCandidates: response.remainingCandidateIds.length,
     });
 
     return NextResponse.json(response);
   } catch (error) {
+    logStage("request_failed", { error: errorKind(error) });
     if (error instanceof ZodError) {
       return NextResponse.json(
         {

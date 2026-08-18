@@ -8,7 +8,7 @@ import type {
 export const DISCOVERY_MINIMUM_RATING = 6.2;
 export const DISCOVERY_MINIMUM_VOTES = 100;
 export const CANDIDATE_POOL_SIZE = 60;
-export const PRE_SHORTLIST_SIZE = 12;
+export const PRE_SHORTLIST_SIZE = 8;
 export const RECOMMENDATION_COUNT = 5;
 export const MINIMUM_RELEVANCE_SCORE = 55;
 
@@ -76,12 +76,31 @@ function meaningfulWords(value: string): string[] {
     );
 }
 
+const TWIST_REQUEST_PATTERN =
+  /plot twist|unexpected (twist|revelation)|surprise (ending|revelation)/;
+const TWIST_EVIDENCE_PATTERN =
+  /plot twist|twist ending|surprise ending|unexpected (turn|revelation|place|places|direction)|startling (final )?reveal|hidden truth|discover(s|ed)? the truth|repeating the same day/;
+
 function textMatches(value: string, corpus: string): boolean {
   const phrase = normalise(value);
   if (!phrase) return false;
+  if (
+    TWIST_REQUEST_PATTERN.test(phrase) &&
+    TWIST_EVIDENCE_PATTERN.test(corpus)
+  ) {
+    return true;
+  }
   if (corpus.includes(phrase)) return true;
   const words = meaningfulWords(phrase);
-  return words.length > 0 && words.every((word) => corpus.includes(word));
+  if (words.length > 0 && words.every((word) => corpus.includes(word))) {
+    return true;
+  }
+  const matchingWords = words.filter((word) => corpus.includes(word));
+  return (
+    words.length >= 3 &&
+    matchingWords.length >= 2 &&
+    matchingWords.length / words.length >= 2 / 3
+  );
 }
 
 function preferenceMatch(
@@ -119,17 +138,15 @@ function preferenceMatch(
     );
   }
 
-  return textMatches(
-    preference.value,
-    normalise(
-      [
-        candidate.title,
-        candidate.overview,
-        ...candidate.genres,
-        ...candidate.keywordNames,
-      ].join(" "),
-    ),
+  const corpus = normalise(
+    [
+      candidate.title,
+      candidate.overview,
+      ...candidate.genres,
+      ...candidate.keywordNames,
+    ].join(" "),
   );
+  return textMatches(preference.value, corpus);
 }
 
 function qualitySignal(
@@ -327,4 +344,24 @@ export function applyCandidateGrades(
     )
     .sort((left, right) => right.score - left.score)
     .slice(0, RECOMMENDATION_COUNT);
+}
+
+export function applyCandidateGradesWithFallback(
+  candidates: MovieRecommendation[],
+  intent: MovieIntent,
+  grades: CandidateGrade[],
+): { recommendations: MovieRecommendation[]; usedFallback: boolean } {
+  const recommendations = applyCandidateGrades(candidates, intent, grades);
+  if (recommendations.length) {
+    return { recommendations, usedFallback: false };
+  }
+
+  return {
+    recommendations: applyCandidateGrades(
+      candidates,
+      intent,
+      candidates.map((candidate) => deterministicGrade(candidate, intent)),
+    ),
+    usedFallback: true,
+  };
 }
