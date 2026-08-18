@@ -22,6 +22,18 @@ Open `http://localhost:3000`. Demo mode is enabled by default. When live
 credentials are available, add them to `.env.local` and set
 `MOVIE_NIGHT_DEMO_MODE=false`.
 
+## Deploy to Vercel
+
+The repository includes `vercel.json` so Vercel builds and serves it as a
+Next.js application. In the Vercel project's **Settings → Build and
+Deployment**, keep **Root Directory** empty (the repository root). The framework,
+build command, and default Next.js output are pinned by the repository.
+
+Set the variables from `.env.example` in Vercel for the environments that need
+them. Demo mode works without provider credentials; live mode requires both
+`OPENAI_API_KEY` and `TMDB_API_TOKEN`. Redeploy after changing build settings or
+environment variables.
+
 ## Repository map
 
 ```text
@@ -48,5 +60,6 @@ standalone browser specimen at `docs/design/specimen.html`.
 
 - [MVP stack](docs/architecture/decisions/0002-adopt-nextjs-typescript-mvp-stack.md)
 - [Live recommendation pipeline](docs/architecture/decisions/0003-adopt-live-recommendation-pipeline.md)
+- [Vercel deployment](docs/architecture/decisions/0004-deploy-mvp-on-vercel.md)
 
-Hosting, analytics, and public-launch monitoring remain future decisions.
+Analytics and public-launch monitoring remain future decisions.
