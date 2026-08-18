@@ -26,13 +26,14 @@ const SYSTEM_PROMPT = `Rank only the supplied TMDB movie candidates against the 
 
 Rules:
 - Judge semantic relevance before popularity, rating, prestige, or general quality.
-- Treat required genres, excluded genres, year, runtime, and language as hard constraints. Put any conflict in contradictions and score it 0.
+- Treat required genres, explicitly requested castMembers, excluded genres, year, runtime, and language as hard constraints. Put any conflict in contradictions and score it 0.
 - Primary preferences must have concrete evidence in the supplied overview, genres, keywords, setting/country, or cast metadata. Incidental genre overlap is not enough.
 - Do not assume that a production country proves the story is set there; require overview or keyword evidence for setting.
 - Do not assume that an adult certification, romance genre, or dramatic relationship makes a film "sexy"; require sensual, erotic, seductive, or closely related evidence.
 - "Chick flick" means a female-centred relationship, friendship, romance, or comedy style. It is not satisfied by an unrelated action film.
 - A request like Anchorman calls for broad, absurdist ensemble comedy. A dark satire or thriller with a comedy tag is not a close match.
 - An all-star or ensemble cast preference requires evidence from the supplied cast size and cast popularity signal.
+- A “similar cast” preference requires at least one supplied candidate cast member to appear in referenceCastMembers. Reward stronger overlap, but one recognisable returning actor is sufficient evidence.
 - Use only supplied candidate IDs and facts. Never invent a film or fact.
 - Give each candidate an independent 0-100 relevance score. Missing a primary preference should normally keep the score below 55.
 - matchReason must be one concise, viewer-facing sentence grounded in matchedCriteria. Do not mention scoring, filtering, APIs, or missing criteria.`;

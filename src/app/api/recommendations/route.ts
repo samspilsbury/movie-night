@@ -9,7 +9,7 @@ import { interpretMovieIntent } from "@/lib/openai/interpret-movie-intent";
 import { logProviderError, ProviderError } from "@/lib/provider-error";
 import {
   discoverCandidatePool,
-  resolveReferenceExclusions,
+  resolveReferenceContext,
 } from "@/lib/tmdb/client";
 
 export const runtime = "nodejs";
@@ -47,22 +47,29 @@ export async function POST(request: Request) {
     const body: unknown = await request.json();
     const input = recommendationRequestSchema.parse(body);
     const env = getServerEnv();
-    const intent =
+    const interpretedIntent =
       input.intent ??
       (env.demoMode
         ? demoIntent(input.prompt ?? "")
         : await interpretMovieIntent(input.prompt ?? ""));
+    const continuing = input.intent !== null && input.candidateIds.length > 0;
+    const referenceContext =
+      continuing || env.demoMode
+        ? { exclusionIds: [], castIds: [], castNames: [] }
+        : await resolveReferenceContext(interpretedIntent);
+    const intent = continuing
+      ? interpretedIntent
+      : {
+          ...interpretedIntent,
+          referenceCastMembers: referenceContext.castNames,
+        };
     logStage("intent_complete", {
       source: input.intent ? "continuation" : env.demoMode ? "demo" : "model",
     });
-
-    const continuing = input.intent !== null && input.candidateIds.length > 0;
-    const referenceExclusionIds =
-      continuing || env.demoMode
-        ? []
-        : await resolveReferenceExclusions(intent);
+    const referenceExclusionIds = referenceContext.exclusionIds;
     logStage("reference_exclusions_complete", {
       count: referenceExclusionIds.length,
+      referenceCast: intent.referenceCastMembers.length,
     });
     const allExcludedIds = [
       ...new Set([...input.excludedMovieIds, ...referenceExclusionIds]),
@@ -72,7 +79,11 @@ export async function POST(request: Request) {
       ? input.candidateIds.filter((id) => !allExcludedIds.includes(id))
       : env.demoMode
         ? getDemoCandidates(intent, allExcludedIds)
-        : await discoverCandidatePool(intent, allExcludedIds);
+        : await discoverCandidatePool(
+            intent,
+            allExcludedIds,
+            referenceContext.castIds,
+          );
     logStage("candidate_pool_complete", {
       candidates: pool.length,
       continuing,

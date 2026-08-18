@@ -13,7 +13,7 @@ import type {
   RecommendationBatch,
 } from "../types";
 
-const SESSION_KEY = "movie-night:recommendation-session:v2";
+const SESSION_KEY = "movie-night:recommendation-session:v3";
 
 type View = "prompt" | "loading" | "recommendation" | "programme-end" | "error";
 
@@ -232,10 +232,10 @@ export function MovieNightExperience() {
       if (!batch.recommendations.length) {
         setSession({
           ...session,
-          remainingCandidateIds: batch.remainingCandidateIds,
+          remainingCandidateIds: [],
         });
         setEndMessage(
-          "There aren't any more confident matches in the original search. Refine the brief to open up a new programme.",
+          "We couldn't find another confident batch in this search. Refine the brief to open up a new programme.",
         );
         return;
       }

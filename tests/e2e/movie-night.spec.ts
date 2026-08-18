@@ -4,6 +4,8 @@ const intent = {
   requiredGenres: ["thriller"],
   preferredGenres: [],
   excludedGenres: [],
+  castMembers: [],
+  referenceCastMembers: [],
   preferences: [
     {
       category: "mood",
@@ -135,6 +137,33 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
   await expect(page.locator(".countdown__number")).toHaveText("10");
   await expect(page.locator("#feature-title")).toHaveText("Arrival");
 
+  const featureLayout = await page.evaluate(() => {
+    const poster = document
+      .querySelector(".feature-poster")!
+      .getBoundingClientRect();
+    const copy = document
+      .querySelector(".feature-copy")!
+      .getBoundingClientRect();
+    return {
+      poster: {
+        top: poster.top,
+        right: poster.right,
+        bottom: poster.bottom,
+        width: poster.width,
+      },
+      copy: { top: copy.top, left: copy.left, width: copy.width },
+    };
+  });
+  if ((page.viewportSize()?.width ?? 0) > 640) {
+    expect(featureLayout.poster.right).toBeLessThan(featureLayout.copy.left);
+    expect(
+      Math.abs(featureLayout.poster.top - featureLayout.copy.top),
+    ).toBeLessThan(2);
+    expect(featureLayout.poster.width).toBeLessThan(featureLayout.copy.width);
+  } else {
+    expect(featureLayout.poster.bottom).toBeLessThan(featureLayout.copy.top);
+  }
+
   const tryAnother = page.getByRole("button", { name: /Try another film/ });
   await tryAnother.click();
   await expect(page.locator(".popcorn-transition")).toBeVisible();
@@ -148,13 +177,16 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
   }
   await tryAnother.click();
   await expect(
-    page.getByRole("heading", { name: "Shall we look again?" }),
+    page.getByRole("heading", { name: "Ready for five more?" }),
   ).toBeVisible();
 
-  await page
-    .getByRole("button", { name: "Search this programme again" })
-    .click();
+  await page.getByRole("button", { name: "Find five more films" }).click();
   await expect(page.locator("#feature-title")).toHaveText("The Next Feature");
+  await tryAnother.click();
+  await expect(
+    page.getByText("That was the only confident match in this batch"),
+  ).toBeVisible();
+  await expect(page.getByText("01 film", { exact: true })).toBeVisible();
   expect(continuationBody).toMatchObject({
     prompt: null,
     candidateIds: [201],

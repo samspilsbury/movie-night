@@ -30,24 +30,30 @@ for the size or average rating of a queue.
 - A small deterministic normalization layer collapses duplicated or truncated
   expressions of known concepts into one auditable preference before retrieval;
   for example, twist variants become `plot twist`.
-- Setting, cast shape, and subjective language such as “sexy” remain explicit
-  intent instead of being flattened into a broad genre.
+- Setting, named cast members, cast shape, and subjective language such as
+  “sexy” remain explicit intent instead of being flattened into a broad genre.
+- Known ambiguous phrases are expanded conservatively. For example, “chick
+  flick” adds romance, comedy, and female-relationship retrieval signals while
+  preserving an explicit UK setting as a primary criterion.
 
 ### Retrieval and enrichment
 
 - TMDB discovery uses up to three targeted lanes across focused,
   keyword-oriented, genre-oriented, and broad retrieval. Results are
   deduplicated into a reusable pool of at most 60 IDs.
-- Keyword resolution is limited to the three strongest terms. Keyword and
+- Keyword resolution is limited to the four strongest terms. Keyword and
   discovery requests settle independently, so one transient TMDB failure does
   not discard useful results from the other lanes.
+- Named actors are resolved through TMDB person search and applied as cast
+  discovery constraints. A “similar cast” request resolves the reference
+  film's lead cast and uses cast overlap for both retrieval and grading.
 - Discovery uses a permissive quality floor of 6.2 from 100 votes. This floor
   protects against unsupported catalogue entries without excluding relevant
   niche films before relevance is assessed.
-- A deterministic pre-ranker selects eight candidates using intent signals,
+- A deterministic pre-ranker selects twelve candidates using intent signals,
   rating confidence, source agreement, and a small popularity contribution.
-- Those eight are enriched in parallel with details, keywords, credits, UK release
-  certification, and UK watch providers.
+- Those twelve are enriched in parallel with details, keywords, credits, UK
+  release certification, and UK watch providers.
 
 ### Reranking and presentation
 
@@ -58,9 +64,14 @@ for the size or average rating of a queue.
   of the final score and deterministic pre-ranking contributes 18%; ratings and
   popularity therefore cannot rescue an intent mismatch.
 - A deterministic evidence scorer is used if semantic reranking fails.
-- If semantic grading completes but rejects the entire shortlist, the same
-  evidence scorer gets one bounded chance to recover catalogue-supported
-  matches; it still enforces every hard constraint and confidence threshold.
+- If semantic grading underfills the shortlist, the same evidence scorer
+  supplements it with catalogue-supported matches; it still enforces every hard
+  constraint and confidence threshold.
+- If fewer than five confident recommendations survive, candidates from the
+  already-discovered pool are enriched and graded in twelve-film increments,
+  stopping as soon as the programme is full or 48 candidates have been
+  assessed. This bounded fill step aims to deliver a complete five-film
+  programme without a second discovery request.
 - The evidence scorer recognises high-confidence catalogue concepts such as a
   `plot twist` keyword without requiring the candidate metadata to repeat a
   longer natural-language preference verbatim. The same conservative concept
@@ -70,8 +81,10 @@ for the size or average rating of a queue.
   has a short timeout. Semantic reranking is skipped when too little of the
   25-second application budget remains; the deterministic scorer then returns
   the best available result instead of extending the wait.
-- Return no more than five candidates above the confidence floor. All five are
-  enriched before the first reveal so “Try another film” is instantaneous.
+- Return five candidates above the confidence floor whenever the catalogue can
+  support them. All are enriched before the first reveal so “Try another film”
+  is instantaneous. A genuinely underfilled programme is labelled with its
+  actual size rather than presented as “1/5”.
 - After five rejections, offer either a refined prompt or another batch. Another
   batch enriches and reranks unused IDs from the original pool and never repeats
   TMDB discovery or intent interpretation.
@@ -120,5 +133,5 @@ duplicates. The original pool is intentionally large enough for another batch.
   retaining prompt text.
 - Expand the regression set from real user misses and compare model/effort
   changes against it before deployment.
-- Revisit the eight-candidate shortlist and 55-point confidence floor with
-  production acceptance data.
+- Revisit the twelve-candidate shortlist, bounded fill limit, and 55-point
+  confidence floor with production acceptance data.

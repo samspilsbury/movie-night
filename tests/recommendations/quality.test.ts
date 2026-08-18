@@ -19,6 +19,8 @@ function intent(overrides: Partial<MovieIntent> = {}): MovieIntent {
     requiredGenres: [],
     preferredGenres: [],
     excludedGenres: [],
+    castMembers: [],
+    referenceCastMembers: [],
     preferences: [],
     keywordTerms: [],
     referenceMovies: [],
@@ -174,7 +176,18 @@ describe("recommendation quality", () => {
         "A female-centred romantic comedy about love and friendship in London.",
       genres: ["Romance", "Comedy"],
       genreIds: [10749, 35],
+      keywordNames: ["london, england"],
       productionCountries: ["United Kingdom", "GB"],
+    });
+    const amIOkay = recommendation({
+      id: 3,
+      title: "Am I OK?",
+      overview:
+        "Two American friends face a change when one announces she is moving to London.",
+      genres: ["Romance", "Comedy", "Drama"],
+      genreIds: [10749, 35, 18],
+      keywordNames: ["female friendship", "relationship"],
+      productionCountries: ["United States of America", "US"],
     });
 
     expect(deterministicGrade(bridget, request).relevanceScore).toBeGreaterThan(
@@ -183,6 +196,14 @@ describe("recommendation quality", () => {
     expect(deterministicGrade(kingsman, request).relevanceScore).toBeLessThan(
       55,
     );
+    expect(
+      deterministicGrade(amIOkay, request).missingPrimaryCriteria,
+    ).toContain("United Kingdom");
+    expect(
+      applyCandidateGrades([amIOkay], request, [
+        deterministicGrade(amIOkay, request),
+      ]),
+    ).toEqual([]);
   });
 
   it("does not let Parasite's comedy tag outrank an Anchorman-like ensemble comedy", () => {
@@ -209,6 +230,7 @@ describe("recommendation quality", () => {
           similarityTraits: ["absurdist humour", "ensemble comedy"],
         },
       ],
+      referenceCastMembers: ["Will Ferrell", "Paul Rudd", "Steve Carell"],
     });
     const parasite = recommendation({
       id: 1,
@@ -226,6 +248,7 @@ describe("recommendation quality", () => {
       genres: ["Comedy", "Action"],
       genreIds: [35, 28],
       castPopularity: 120,
+      cast: ["Will Ferrell", "Mark Wahlberg", "Eva Mendes"],
     });
 
     expect(
@@ -234,6 +257,77 @@ describe("recommendation quality", () => {
     expect(deterministicGrade(parasite, request).relevanceScore).toBeLessThan(
       55,
     );
+  });
+
+  it("requires a specifically requested actor", () => {
+    const request = intent({
+      requiredGenres: ["comedy"],
+      castMembers: ["Paul Rudd"],
+      preferences: [
+        {
+          category: "cast",
+          value: "starring Paul Rudd",
+          priority: "primary",
+          source: "explicit",
+        },
+      ],
+    });
+    const withPaulRudd = recommendation({
+      id: 1,
+      genres: ["Comedy"],
+      genreIds: [35],
+      cast: ["Paul Rudd", "Jason Segel", "Rashida Jones"],
+    });
+    const withoutPaulRudd = recommendation({
+      id: 2,
+      genres: ["Comedy"],
+      genreIds: [35],
+      cast: ["Will Ferrell", "Steve Carell", "David Koechner"],
+    });
+
+    const ranked = applyCandidateGrades(
+      [withoutPaulRudd, withPaulRudd],
+      request,
+      [withoutPaulRudd, withPaulRudd].map((movie) =>
+        deterministicGrade(movie, request),
+      ),
+    );
+
+    expect(ranked.map((movie) => movie.id)).toEqual([withPaulRudd.id]);
+  });
+
+  it("supplements an underfilled semantic result with relevant evidence matches", () => {
+    const request = intent({ requiredGenres: ["comedy"] });
+    const candidates = Array.from({ length: 5 }, (_, index) =>
+      recommendation({
+        id: index + 1,
+        title: `Comedy ${index + 1}`,
+        genres: ["Comedy"],
+        genreIds: [35],
+      }),
+    );
+
+    const result = applyCandidateGradesWithFallback(candidates, request, [
+      {
+        id: 1,
+        relevanceScore: 90,
+        matchedCriteria: ["comedy"],
+        missingPrimaryCriteria: [],
+        contradictions: [],
+        matchReason: "A strong comedy match.",
+      },
+      ...candidates.slice(1).map((movie) => ({
+        id: movie.id,
+        relevanceScore: 20,
+        matchedCriteria: [],
+        missingPrimaryCriteria: [],
+        contradictions: [],
+        matchReason: "Weak semantic match.",
+      })),
+    ]);
+
+    expect(result.usedFallback).toBe(true);
+    expect(result.recommendations).toHaveLength(5);
   });
 
   it("recognises catalogue plot-twist evidence for a romcom fallback", () => {

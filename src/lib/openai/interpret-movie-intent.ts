@@ -20,6 +20,8 @@ Rules:
 - Express every meaningful non-genre request in preferences. Preserve the user's actual meaning: mood, tone, theme, setting, cast, pace, or style. Mark directly stated, central requirements primary and explicit; mark helpful implications secondary and inferred.
 - Keep preferences independent and non-duplicative. Do not restate required genres inside a preference, and do not create several paraphrases of one requirement.
 - For a positive reference movie, add two to five broadly recognised similarityTraits that explain what the user is likely asking to carry over. Do not infer cast, director, franchise, or character names unless the user explicitly requests them.
+- Put every explicitly named actor requested for the new film in castMembers, using their standard credited name. “Starring Paul Rudd” must produce castMembers: ["Paul Rudd"]. A request for a cast similar to a reference film is not an explicit actor name and leaves castMembers empty.
+- Always return referenceCastMembers as an empty array. The server derives it from reference-film credits when the viewer asks for a similar cast.
 - Turn abstract intent into two to eight concrete, TMDB-searchable keyword concepts when they materially improve retrieval. Do not add unrelated concepts merely to fill the array.
 - Use only the allowed genre enum values.
 - Use a two-letter ISO 639-1 original-language code only when the viewer explicitly asks for a language.
@@ -28,7 +30,9 @@ Rules:
 - "all-star cast" or "ensemble cast" is a primary cast preference; do not reduce it to a genre.
 - "sexy" is a primary tone preference. Add relevant concepts such as sensuality or eroticism, without treating any adult-rated drama as a match.
 - "chick flick" is a style request normally associated with female-centred relationships, romance, friendship, or comedy; it is not satisfied by an unrelated action film with incidental UK locations.
+- For "a chick flick set in the UK", prefer romance and comedy, preserve female-centred relationships or friendship as a primary style, preserve the United Kingdom story setting as a separate primary setting, and include chick-flick and UK-setting keyword concepts.
 - For "comedy like Anchorman with an all-star cast", require comedy and preserve absurdist ensemble comedy plus star-studded cast as primary preferences. A dark film merely tagged comedy is not a match.
+- For "a comedy like Anchorman with a similar cast", require comedy, preserve Anchorman as a reference, and create a primary cast preference for overlapping actors from the reference film.
 - For "a romcom but with a big twist", require romance and comedy and create one primary plot-twist preference. The genres are not a second style or tone preference.
 - Return empty arrays and nulls for unspecified criteria.`;
 

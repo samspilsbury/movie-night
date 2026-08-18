@@ -17,7 +17,7 @@ import { ProviderError } from "@/lib/provider-error";
 
 const TMDB_API_BASE = "https://api.themoviedb.org/3";
 const TMDB_REQUEST_TIMEOUT_MS = 6_000;
-const MAX_KEYWORD_LOOKUPS = 3;
+const MAX_KEYWORD_LOOKUPS = 4;
 
 type TmdbDiscoverMovie = {
   id: number;
@@ -58,7 +58,12 @@ type TmdbDetails = {
   belongs_to_collection: { id: number } | null;
   keywords?: { keywords: Array<{ id: number; name: string }> };
   credits?: {
-    cast: Array<{ name: string; order: number; popularity?: number }>;
+    cast: Array<{
+      id: number;
+      name: string;
+      order: number;
+      popularity?: number;
+    }>;
     crew: Array<{ name: string; job: string }>;
   };
   release_dates?: {
@@ -216,10 +221,46 @@ async function resolveKeywordIds(terms: string[]): Promise<number[]> {
   ];
 }
 
-export async function resolveReferenceExclusions(
+async function resolveCastIds(names: string[]): Promise<number[]> {
+  const results = await Promise.allSettled(
+    names.map(async (name) => {
+      const response = await tmdbFetch<{
+        results: Array<{
+          id: number;
+          name: string;
+          known_for_department?: string;
+        }>;
+      }>("/search/person", { query: name, page: 1 });
+      const expected = normalizeMovieTitle(name);
+      const exact = response.results.find(
+        (person) =>
+          normalizeMovieTitle(person.name) === expected &&
+          person.known_for_department === "Acting",
+      );
+      return exact?.id ?? response.results[0]?.id ?? null;
+    }),
+  );
+  return [
+    ...new Set(
+      results.flatMap((result) =>
+        result.status === "fulfilled" && result.value !== null
+          ? [result.value]
+          : [],
+      ),
+    ),
+  ];
+}
+
+export type ReferenceContext = {
+  exclusionIds: number[];
+  castIds: number[];
+  castNames: string[];
+};
+
+export async function resolveReferenceContext(
   intent: MovieIntent,
-): Promise<number[]> {
-  const exclusionGroups = await Promise.all(
+): Promise<ReferenceContext> {
+  const referenceGroups = await Promise.all(
     intent.referenceMovies.map(async (reference) => {
       const search = await tmdbFetch<{ results: TmdbDiscoverMovie[] }>(
         "/search/movie",
@@ -232,19 +273,47 @@ export async function resolveReferenceExclusions(
         },
       );
       const match = selectReferenceMatch(search.results, reference);
-      if (!match) return [];
+      if (!match) return { exclusionIds: [], castIds: [], castNames: [] };
       const details = await tmdbFetch<TmdbDetails>(`/movie/${match.id}`, {
         language: "en-GB",
+        append_to_response: "credits",
       });
-      if (!details.belongs_to_collection) return [match.id];
+      const cast = [...(details.credits?.cast ?? [])]
+        .sort((left, right) => left.order - right.order)
+        .slice(0, 6);
+      if (!details.belongs_to_collection) {
+        return {
+          exclusionIds: [match.id],
+          castIds: cast.map((member) => member.id),
+          castNames: cast.map((member) => member.name),
+        };
+      }
       const collection = await tmdbFetch<{ parts: Array<{ id: number }> }>(
         `/collection/${details.belongs_to_collection.id}`,
         { language: "en-GB" },
       );
-      return [match.id, ...collection.parts.map((part) => part.id)];
+      return {
+        exclusionIds: [match.id, ...collection.parts.map((part) => part.id)],
+        castIds: cast.map((member) => member.id),
+        castNames: cast.map((member) => member.name),
+      };
     }),
   );
-  return [...new Set(exclusionGroups.flat())];
+  return {
+    exclusionIds: [
+      ...new Set(referenceGroups.flatMap((group) => group.exclusionIds)),
+    ],
+    castIds: [...new Set(referenceGroups.flatMap((group) => group.castIds))],
+    castNames: [
+      ...new Set(referenceGroups.flatMap((group) => group.castNames)),
+    ],
+  };
+}
+
+export async function resolveReferenceExclusions(
+  intent: MovieIntent,
+): Promise<number[]> {
+  return (await resolveReferenceContext(intent)).exclusionIds;
 }
 
 type DiscoveryLane = {
@@ -252,12 +321,47 @@ type DiscoveryLane = {
   page: number;
   genres?: string;
   keywords?: string;
+  cast?: string;
+  originCountry?: string;
 };
 
 function discoveryLanes(
   genreQuery: string,
   keywordQuery: string,
+  castQuery: string,
+  originCountry: string,
 ): DiscoveryLane[] {
+  if (castQuery) {
+    return [
+      { source: "cast", page: 1, genres: genreQuery, cast: castQuery },
+      { source: "cast", page: 2, genres: genreQuery, cast: castQuery },
+      {
+        source: "focused",
+        page: 1,
+        genres: genreQuery,
+        keywords: keywordQuery,
+        cast: castQuery,
+      },
+    ];
+  }
+  if (originCountry) {
+    return [
+      {
+        source: "focused",
+        page: 1,
+        genres: genreQuery,
+        keywords: keywordQuery,
+        originCountry,
+      },
+      {
+        source: "focused",
+        page: 2,
+        genres: genreQuery,
+        originCountry,
+      },
+      { source: "keyword", page: 1, keywords: keywordQuery },
+    ];
+  }
   if (genreQuery && keywordQuery) {
     return [
       {
@@ -290,8 +394,12 @@ function discoveryLanes(
 export async function discoverCandidatePool(
   intent: MovieIntent,
   excludedIds: number[],
+  referenceCastIds: number[] = [],
 ): Promise<MovieCandidate[]> {
-  const keywordIds = await resolveKeywordIds(intent.keywordTerms);
+  const [keywordIds, requestedCastIds] = await Promise.all([
+    resolveKeywordIds(intent.keywordTerms),
+    resolveCastIds(intent.castMembers),
+  ]);
   const requiredGenreIds = genreNamesToIds(intent.requiredGenres);
   const preferredGenreIds = genreNamesToIds(intent.preferredGenres);
   const excludedGenreIds = genreNamesToIds(intent.excludedGenres);
@@ -299,6 +407,27 @@ export async function discoverCandidatePool(
     ? requiredGenreIds.join(",")
     : preferredGenreIds.join("|");
   const keywordQuery = keywordIds.join("|");
+  const wantsSimilarCast = intent.preferences.some(
+    (preference) =>
+      preference.category === "cast" &&
+      /similar|same|overlap/.test(normalizeMovieTitle(preference.value)),
+  );
+  const castQuery = (
+    requestedCastIds.length
+      ? requestedCastIds
+      : wantsSimilarCast
+        ? referenceCastIds
+        : []
+  ).join("|");
+  const originCountry = intent.preferences.some(
+    (preference) =>
+      preference.category === "setting" &&
+      /united kingdom|\buk\b|britain|british|england|scotland|wales|northern ireland/.test(
+        normalizeMovieTitle(preference.value),
+      ),
+  )
+    ? "GB"
+    : "";
   const today = new Date().toISOString().slice(0, 10);
   const requestedMaximumDate = intent.maximumYear
     ? `${intent.maximumYear}-12-31`
@@ -307,30 +436,34 @@ export async function discoverCandidatePool(
     requestedMaximumDate < today ? requestedMaximumDate : today;
 
   const laneResults = await Promise.allSettled(
-    discoveryLanes(genreQuery, keywordQuery).map(async (lane) => {
-      const response = await tmdbFetch<{ results: TmdbDiscoverMovie[] }>(
-        "/discover/movie",
-        {
-          include_adult: true,
-          include_video: false,
-          language: "en-GB",
-          page: lane.page,
-          sort_by: "popularity.desc",
-          "vote_average.gte": DISCOVERY_MINIMUM_RATING,
-          "vote_count.gte": DISCOVERY_MINIMUM_VOTES,
-          with_genres: lane.genres,
-          without_genres: excludedGenreIds.join(","),
-          with_keywords: lane.keywords,
-          "primary_release_date.gte": intent.minimumYear
-            ? `${intent.minimumYear}-01-01`
-            : undefined,
-          "primary_release_date.lte": maximumReleaseDate,
-          "with_runtime.lte": intent.maximumRuntimeMinutes ?? undefined,
-          with_original_language: intent.originalLanguage ?? undefined,
-        },
-      );
-      return response.results.map((movie) => toCandidate(movie, lane.source));
-    }),
+    discoveryLanes(genreQuery, keywordQuery, castQuery, originCountry).map(
+      async (lane) => {
+        const response = await tmdbFetch<{ results: TmdbDiscoverMovie[] }>(
+          "/discover/movie",
+          {
+            include_adult: true,
+            include_video: false,
+            language: "en-GB",
+            page: lane.page,
+            sort_by: "popularity.desc",
+            "vote_average.gte": DISCOVERY_MINIMUM_RATING,
+            "vote_count.gte": DISCOVERY_MINIMUM_VOTES,
+            with_genres: lane.genres,
+            without_genres: excludedGenreIds.join(","),
+            with_keywords: lane.keywords,
+            with_cast: lane.cast,
+            with_origin_country: lane.originCountry,
+            "primary_release_date.gte": intent.minimumYear
+              ? `${intent.minimumYear}-01-01`
+              : undefined,
+            "primary_release_date.lte": maximumReleaseDate,
+            "with_runtime.lte": intent.maximumRuntimeMinutes ?? undefined,
+            with_original_language: intent.originalLanguage ?? undefined,
+          },
+        );
+        return response.results.map((movie) => toCandidate(movie, lane.source));
+      },
+    ),
   );
 
   const successfulLanes = laneResults.flatMap((result) =>

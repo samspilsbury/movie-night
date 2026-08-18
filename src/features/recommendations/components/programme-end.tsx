@@ -26,20 +26,25 @@ export function ProgrammeEnd({
   return (
     <section className="programme-end" aria-labelledby="programme-end-title">
       <div className="programme-end__ticket" aria-hidden="true">
-        <span>End of programme</span>
-        <span>{String(programmeSize).padStart(2, "0")} / 05</span>
+        <span>Programme complete</span>
+        <span>
+          {String(programmeSize).padStart(2, "0")}{" "}
+          {programmeSize === 1 ? "film" : "films"}
+        </span>
       </div>
       <div className="programme-end__copy">
         <p className="kicker">
-          You&apos;ve seen tonight&apos;s{" "}
-          {programmeSize === 1 ? "film" : `${programmeSize} films`}
+          {programmeSize === 1
+            ? "That was the only confident match in this batch"
+            : `You've seen all ${programmeSize} films in this batch`}
         </p>
         <h1 id="programme-end-title" ref={headingRef} tabIndex={-1}>
-          Shall we look again?
+          {canSearchAgain ? "Ready for five more?" : "Try a broader brief?"}
         </h1>
         <p>
-          Search the unused films from this programme, or refine your brief and
-          start with a fresh slate.
+          {canSearchAgain
+            ? "Choose another five from the same search, or refine your brief and start fresh."
+            : "There are no more confident matches in this search. Refine your brief to start fresh."}
         </p>
         {message ? (
           <p className="programme-end__message" role="status">
@@ -47,16 +52,16 @@ export function ProgrammeEnd({
           </p>
         ) : null}
         <div className="programme-end__actions">
-          <button
-            className="feature-button"
-            type="button"
-            disabled={!canSearchAgain || isSearching}
-            onClick={onSearchAgain}
-          >
-            {isSearching
-              ? "Preparing the next five…"
-              : "Search this programme again"}
-          </button>
+          {canSearchAgain ? (
+            <button
+              className="feature-button"
+              type="button"
+              disabled={isSearching}
+              onClick={onSearchAgain}
+            >
+              {isSearching ? "Preparing five more…" : "Find five more films"}
+            </button>
+          ) : null}
           <button
             className="secondary-button"
             type="button"

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MovieIntent } from "@/features/recommendations/types";
 import {
   discoverCandidatePool,
+  resolveReferenceContext,
   resolveReferenceExclusions,
 } from "@/lib/tmdb/client";
 
@@ -10,6 +11,8 @@ const baseIntent: MovieIntent = {
   requiredGenres: ["thriller"],
   preferredGenres: ["science fiction"],
   excludedGenres: ["horror"],
+  castMembers: [],
+  referenceCastMembers: [],
   preferences: [
     {
       category: "mood",
@@ -168,6 +171,41 @@ describe("TMDB client", () => {
     expect(candidates.map((movie) => movie.id)).toEqual([21, 22]);
   });
 
+  it("adds a UK-focused retrieval lane for an explicit UK setting", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      jsonResponse({
+        results: [tmdbMovie({ id: 30, genre_ids: [35, 10749] })],
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await discoverCandidatePool(
+      {
+        ...baseIntent,
+        requiredGenres: ["comedy", "romance"],
+        excludedGenres: [],
+        preferences: [
+          {
+            category: "setting",
+            value: "United Kingdom",
+            priority: "primary",
+            source: "explicit",
+          },
+        ],
+      },
+      [],
+    );
+
+    const discoverUrls = fetchMock.mock.calls
+      .map(([request]) => new URL(request))
+      .filter((url) => url.pathname === "/3/discover/movie");
+    expect(
+      discoverUrls.filter(
+        (url) => url.searchParams.get("with_origin_country") === "GB",
+      ),
+    ).toHaveLength(2);
+  });
+
   it("selects the exact referenced title and excludes its collection", async () => {
     const fetchMock = vi
       .fn()
@@ -201,6 +239,79 @@ describe("TMDB client", () => {
     expect(exclusions).toEqual([12, 13, 14]);
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain("/movie/12");
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/collection/99");
+  });
+
+  it("uses the named cast and a reference movie's lead cast for discovery", async () => {
+    const referenceFetch = vi
+      .fn()
+      .mockResolvedValueOnce(
+        jsonResponse({
+          results: [tmdbMovie({ id: 8699, title: "Anchorman" })],
+        }),
+      )
+      .mockResolvedValueOnce(
+        jsonResponse({
+          id: 8699,
+          belongs_to_collection: null,
+          credits: {
+            cast: [
+              { id: 23659, name: "Will Ferrell", order: 0 },
+              { id: 22226, name: "Paul Rudd", order: 3 },
+            ],
+          },
+        }),
+      );
+    vi.stubGlobal("fetch", referenceFetch);
+
+    const context = await resolveReferenceContext({
+      ...baseIntent,
+      referenceMovies: [
+        { title: "Anchorman", year: 2004, similarityTraits: [] },
+      ],
+    });
+
+    expect(context).toEqual({
+      exclusionIds: [8699],
+      castIds: [23659, 22226],
+      castNames: ["Will Ferrell", "Paul Rudd"],
+    });
+
+    const discoveryFetch = vi.fn().mockImplementation((request: URL) => {
+      const url = new URL(request);
+      if (url.pathname === "/3/search/person") {
+        return Promise.resolve(
+          jsonResponse({
+            results: [
+              { id: 22226, name: "Paul Rudd", known_for_department: "Acting" },
+            ],
+          }),
+        );
+      }
+      return Promise.resolve(
+        jsonResponse({ results: [tmdbMovie({ id: 42 })] }),
+      );
+    });
+    vi.stubGlobal("fetch", discoveryFetch);
+
+    await discoverCandidatePool(
+      {
+        ...baseIntent,
+        requiredGenres: ["comedy"],
+        castMembers: ["Paul Rudd"],
+      },
+      [],
+      context.castIds,
+    );
+
+    const discoveryUrls = discoveryFetch.mock.calls
+      .map(([request]) => new URL(request))
+      .filter((url) => url.pathname === "/3/discover/movie");
+    expect(discoveryUrls).toHaveLength(3);
+    expect(
+      discoveryUrls.every(
+        (url) => url.searchParams.get("with_cast") === "22226",
+      ),
+    ).toBe(true);
   });
 
   it("turns TMDB authentication failures into safe provider errors", async () => {

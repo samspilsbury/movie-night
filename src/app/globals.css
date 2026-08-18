@@ -872,6 +872,8 @@ button:disabled {
 }
 
 .screen-frame {
+  container-name: recommendation-screen;
+  container-type: inline-size;
   width: min(100%, 72rem);
   margin-inline: auto;
   padding: clamp(0.65rem, 1.6vw, 1.1rem);
@@ -881,7 +883,6 @@ button:disabled {
 }
 
 .cinema-screen {
-  container-type: inline-size;
   min-height: 35rem;
   display: grid;
   gap: clamp(1.5rem, 4cqi, 3rem);
@@ -1198,9 +1199,9 @@ button:disabled {
   margin: 0;
 }
 
-@container (min-width: 42rem) {
+@container recommendation-screen (min-width: 42rem) {
   .cinema-screen {
-    grid-template-columns: minmax(10rem, 0.62fr) minmax(0, 1.85fr);
+    grid-template-columns: clamp(12rem, 26cqi, 15rem) minmax(0, 1fr);
   }
 }
 

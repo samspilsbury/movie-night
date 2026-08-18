@@ -51,6 +51,8 @@ export type MovieIntent = {
   excludedGenres: GenreName[];
   preferences: IntentPreference[];
   keywordTerms: string[];
+  castMembers: string[];
+  referenceCastMembers: string[];
   referenceMovies: ReferenceMovie[];
   minimumYear: number | null;
   maximumYear: number | null;
@@ -58,7 +60,8 @@ export type MovieIntent = {
   originalLanguage: string | null;
 };
 
-export type DiscoverySource = "focused" | "keyword" | "genre" | "broad";
+export type DiscoverySource =
+  "focused" | "keyword" | "cast" | "genre" | "broad";
 
 export type MovieCandidate = {
   id: number;

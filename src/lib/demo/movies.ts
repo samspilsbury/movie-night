@@ -286,6 +286,8 @@ export function demoIntent(prompt: string): MovieIntent {
       },
     ],
     keywordTerms: [],
+    castMembers: [],
+    referenceCastMembers: [],
     referenceMovies,
     minimumYear: null,
     maximumYear: null,

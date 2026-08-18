@@ -8,6 +8,8 @@ function intent(overrides: Partial<MovieIntent> = {}): MovieIntent {
     requiredGenres: [],
     preferredGenres: [],
     excludedGenres: [],
+    castMembers: [],
+    referenceCastMembers: [],
     preferences: [],
     keywordTerms: [],
     referenceMovies: [],
@@ -66,5 +68,54 @@ describe("movie intent normalization", () => {
     });
 
     expect(normalizeMovieIntent(original)).toBe(original);
+  });
+
+  it("turns chick flick into searchable genre and relationship signals", () => {
+    const normalized = normalizeMovieIntent(
+      intent({
+        preferences: [
+          {
+            category: "style",
+            value: "chick flick centred on female characters",
+            priority: "primary",
+            source: "explicit",
+          },
+          {
+            category: "setting",
+            value: "set in the UK",
+            priority: "primary",
+            source: "explicit",
+          },
+        ],
+      }),
+    );
+
+    expect(normalized.preferredGenres).toEqual(["romance", "comedy"]);
+    expect(normalized.preferences[0]?.value).toBe(
+      "female-centred relationships and friendship",
+    );
+    expect(normalized.keywordTerms.slice(0, 4)).toEqual([
+      "chick flick",
+      "United Kingdom",
+      "female friendship",
+      "romantic relationship",
+    ]);
+  });
+
+  it("extracts a named star from a cast preference", () => {
+    const normalized = normalizeMovieIntent(
+      intent({
+        preferences: [
+          {
+            category: "cast",
+            value: "starring Paul Rudd",
+            priority: "primary",
+            source: "explicit",
+          },
+        ],
+      }),
+    );
+
+    expect(normalized.castMembers).toEqual(["Paul Rudd"]);
   });
 });

@@ -1,8 +1,11 @@
 import {
+  applyCandidateGrades,
   applyCandidateGradesWithFallback,
   candidateScore,
   deterministicGrade,
   PRE_SHORTLIST_SIZE,
+  PROGRAMME_FILL_LIMIT,
+  RECOMMENDATION_COUNT,
 } from "./quality";
 import type {
   MovieCandidate,
@@ -34,6 +37,16 @@ async function enrichShortlist(
     const movie = getDemoMovie(id, intent);
     return movie ? [movie] : [];
   });
+}
+
+function scoreEnrichedCandidates(
+  candidates: MovieRecommendation[],
+  intent: MovieIntent,
+): MovieRecommendation[] {
+  return candidates.map((candidate) => ({
+    ...candidate,
+    score: candidate.score || candidateScore(candidate, intent),
+  }));
 }
 
 async function rankShortlist(
@@ -105,26 +118,63 @@ export async function buildRecommendationBatch({
   onStage?: StageLogger;
 }): Promise<RecommendationBatch> {
   const shortlist = pool.slice(0, PRE_SHORTLIST_SIZE);
-  const enriched = (await enrichShortlist(shortlist, intent, demoMode)).map(
-    (candidate) => ({
-      ...candidate,
-      score: candidate.score || candidateScore(candidate, intent),
-    }),
+  const enriched = scoreEnrichedCandidates(
+    await enrichShortlist(shortlist, intent, demoMode),
+    intent,
   );
   onStage?.("enrichment_complete", {
     received: enriched.length,
     requested: shortlist.length,
   });
-  const recommendations = await rankShortlist(
+  let recommendations = await rankShortlist(
     enriched,
     intent,
     demoMode,
     deadlineAt ?? Number.POSITIVE_INFINITY,
     onStage,
   );
+  let assessedCandidates = shortlist;
+
+  for (
+    let start = shortlist.length;
+    recommendations.length < RECOMMENDATION_COUNT &&
+    start < Math.min(pool.length, PROGRAMME_FILL_LIMIT);
+    start += PRE_SHORTLIST_SIZE
+  ) {
+    const fillCandidates = pool.slice(
+      start,
+      Math.min(start + PRE_SHORTLIST_SIZE, PROGRAMME_FILL_LIMIT),
+    );
+    const fillEnriched = scoreEnrichedCandidates(
+      await enrichShortlist(fillCandidates, intent, demoMode),
+      intent,
+    );
+    const fillRecommendations = applyCandidateGrades(
+      fillEnriched,
+      intent,
+      fillEnriched.map((candidate) => deterministicGrade(candidate, intent)),
+    );
+    const selectedIds = new Set(
+      recommendations.map((recommendation) => recommendation.id),
+    );
+    recommendations = [
+      ...recommendations,
+      ...fillRecommendations.filter(
+        (recommendation) => !selectedIds.has(recommendation.id),
+      ),
+    ]
+      .sort((left, right) => right.score - left.score)
+      .slice(0, RECOMMENDATION_COUNT);
+    assessedCandidates = [...assessedCandidates, ...fillCandidates];
+    onStage?.("programme_fill_complete", {
+      assessed: assessedCandidates.length,
+      recommendations: recommendations.length,
+    });
+  }
+
   const selectedIds = new Set(recommendations.map((movie) => movie.id));
-  const unassessedCandidates = pool.slice(shortlist.length);
-  const assessedButUnselected = shortlist.filter((candidate) => {
+  const unassessedCandidates = pool.slice(assessedCandidates.length);
+  const assessedButUnselected = assessedCandidates.filter((candidate) => {
     const id = typeof candidate === "number" ? candidate : candidate.id;
     return !selectedIds.has(id);
   });
