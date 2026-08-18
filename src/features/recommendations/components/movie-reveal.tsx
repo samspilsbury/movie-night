@@ -118,7 +118,9 @@ export function MovieReveal({
 
             <p className="match-reason">{movie.matchReason}</p>
             <p className="feature-overview">{movie.overview}</p>
+          </div>
 
+          <div className="feature-supporting">
             <dl className="credits">
               {movie.director ? (
                 <div>

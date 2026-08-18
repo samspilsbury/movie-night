@@ -885,6 +885,10 @@ button:disabled {
 .cinema-screen {
   min-height: 35rem;
   display: grid;
+  grid-template-areas:
+    "poster"
+    "copy"
+    "support";
   gap: clamp(1.5rem, 4cqi, 3rem);
   padding: clamp(1.25rem, 4cqi, 3.5rem);
   background:
@@ -899,6 +903,7 @@ button:disabled {
 }
 
 .feature-poster {
+  grid-area: poster;
   align-self: start;
   overflow: hidden;
   border: var(--border-thin) solid var(--color-border-marquee-strong);
@@ -934,9 +939,17 @@ button:disabled {
 }
 
 .feature-copy {
+  grid-area: copy;
   min-width: 0;
   display: grid;
   align-content: start;
+  gap: var(--space-lg);
+}
+
+.feature-supporting {
+  grid-area: support;
+  min-width: 0;
+  display: grid;
   gap: var(--space-lg);
 }
 
@@ -1201,6 +1214,9 @@ button:disabled {
 
 @container recommendation-screen (min-width: 42rem) {
   .cinema-screen {
+    grid-template-areas:
+      "poster copy"
+      "support support";
     grid-template-columns: clamp(12rem, 26cqi, 15rem) minmax(0, 1fr);
   }
 }

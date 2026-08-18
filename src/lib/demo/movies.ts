@@ -288,6 +288,7 @@ export function demoIntent(prompt: string): MovieIntent {
     keywordTerms: [],
     castMembers: [],
     referenceCastMembers: [],
+    productionOriginCountries: [],
     referenceMovies,
     minimumYear: null,
     maximumYear: null,

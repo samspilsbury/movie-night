@@ -21,6 +21,7 @@ function intent(overrides: Partial<MovieIntent> = {}): MovieIntent {
     excludedGenres: [],
     castMembers: [],
     referenceCastMembers: [],
+    productionOriginCountries: [],
     preferences: [],
     keywordTerms: [],
     referenceMovies: [],
@@ -96,7 +97,7 @@ describe("recommendation quality", () => {
     );
   });
 
-  it("deduplicates exclusions and caps the reusable pool at sixty", () => {
+  it("deduplicates exclusions and caps the retrieval shortlist at sixty", () => {
     const candidates = Array.from({ length: 70 }, (_, index) =>
       candidate({ id: index + 1, voteCount: 1_000 + index }),
     );
@@ -139,7 +140,49 @@ describe("recommendation quality", () => {
       request,
       [shawshank, bodyHeat].map((movie) => deterministicGrade(movie, request)),
     );
-    expect(ranked.map((movie) => movie.title)).toEqual(["Body Heat"]);
+    expect(ranked.map((movie) => movie.title)).toEqual([
+      "Body Heat",
+      "The Shawshank Redemption",
+    ]);
+  });
+
+  it("does not let ratings overtake a materially stronger intent match", () => {
+    const celebrated = recommendation({
+      id: 1,
+      title: "Celebrated but vague",
+      voteAverage: 9.2,
+      voteCount: 30_000,
+    });
+    const relevant = recommendation({
+      id: 2,
+      title: "Clearly relevant",
+      voteAverage: 6.3,
+      voteCount: 120,
+    });
+    const grades = [
+      {
+        id: celebrated.id,
+        relevanceScore: 65,
+        matchedCriteria: ["one soft preference"],
+        missingPrimaryCriteria: ["another soft preference"],
+        contradictions: [],
+        matchReason: "A partial match.",
+      },
+      {
+        id: relevant.id,
+        relevanceScore: 85,
+        matchedCriteria: ["both important preferences"],
+        missingPrimaryCriteria: [],
+        contradictions: [],
+        matchReason: "A strong match.",
+      },
+    ];
+
+    expect(
+      applyCandidateGrades([celebrated, relevant], intent(), grades).map(
+        (movie) => movie.id,
+      ),
+    ).toEqual([relevant.id, celebrated.id]);
   });
 
   it("requires both the requested chick-flick style and UK setting", () => {
@@ -179,11 +222,20 @@ describe("recommendation quality", () => {
       keywordNames: ["london, england"],
       productionCountries: ["United Kingdom", "GB"],
     });
+    const londonSynopsis = recommendation({
+      id: 4,
+      title: "A London Romance",
+      overview:
+        "A woman navigates friendship and an unexpected romance in London.",
+      genres: ["Romance", "Comedy"],
+      genreIds: [10749, 35],
+      keywordNames: ["female friendship"],
+    });
     const amIOkay = recommendation({
       id: 3,
       title: "Am I OK?",
       overview:
-        "Two American friends face a change when one announces she is moving to London.",
+        "Two American friends face a change when one announces she is moving away.",
       genres: ["Romance", "Comedy", "Drama"],
       genreIds: [10749, 35, 18],
       keywordNames: ["female friendship", "relationship"],
@@ -196,6 +248,9 @@ describe("recommendation quality", () => {
     expect(deterministicGrade(kingsman, request).relevanceScore).toBeLessThan(
       55,
     );
+    expect(deterministicGrade(londonSynopsis, request).relevanceScore).toBe(
+      100,
+    );
     expect(
       deterministicGrade(amIOkay, request).missingPrimaryCriteria,
     ).toContain("United Kingdom");
@@ -203,7 +258,7 @@ describe("recommendation quality", () => {
       applyCandidateGrades([amIOkay], request, [
         deterministicGrade(amIOkay, request),
       ]),
-    ).toEqual([]);
+    ).toHaveLength(1);
   });
 
   it("does not let Parasite's comedy tag outrank an Anchorman-like ensemble comedy", () => {
@@ -296,7 +351,7 @@ describe("recommendation quality", () => {
     expect(ranked.map((movie) => movie.id)).toEqual([withPaulRudd.id]);
   });
 
-  it("supplements an underfilled semantic result with relevant evidence matches", () => {
+  it("keeps a complete batch even when some soft evidence is weak", () => {
     const request = intent({ requiredGenres: ["comedy"] });
     const candidates = Array.from({ length: 5 }, (_, index) =>
       recommendation({
@@ -326,7 +381,7 @@ describe("recommendation quality", () => {
       })),
     ]);
 
-    expect(result.usedFallback).toBe(true);
+    expect(result.usedFallback).toBe(false);
     expect(result.recommendations).toHaveLength(5);
   });
 
@@ -355,6 +410,60 @@ describe("recommendation quality", () => {
 
     expect(grade.missingPrimaryCriteria).toEqual([]);
     expect(grade.relevanceScore).toBeGreaterThan(80);
+  });
+
+  it("recognises psychological and structural twist evidence without spoilers in the overview", () => {
+    const request = intent({
+      requiredGenres: ["thriller"],
+      preferences: [
+        {
+          category: "theme",
+          value: "psychological tension and mind games",
+          priority: "primary",
+          source: "explicit",
+        },
+        {
+          category: "theme",
+          value: "plot twist",
+          priority: "primary",
+          source: "explicit",
+        },
+      ],
+    });
+    const fightClub = recommendation({
+      title: "Fight Club",
+      overview:
+        "An insomniac and a soap salesman form an underground fight club.",
+      genres: ["Drama", "Thriller"],
+      genreIds: [18, 53],
+      keywordNames: [
+        "dual identity",
+        "alter ego",
+        "split personality",
+        "dissociative identity disorder",
+      ],
+    });
+    const genericThriller = recommendation({
+      id: 2,
+      title: "A Generic Thriller",
+      overview: "A detective pursues a criminal through a dangerous city.",
+      genres: ["Thriller"],
+      genreIds: [53],
+      keywordNames: ["police", "chase"],
+    });
+
+    const ranked = applyCandidateGrades(
+      [genericThriller, fightClub],
+      request,
+      [genericThriller, fightClub].map((movie) =>
+        deterministicGrade(movie, request),
+      ),
+    );
+
+    expect(ranked.map((movie) => movie.title)).toEqual([
+      "Fight Club",
+      "A Generic Thriller",
+    ]);
   });
 
   it("promotes a romcom with an unexpected turn before generic popular matches", () => {
@@ -393,7 +502,7 @@ describe("recommendation quality", () => {
     );
   });
 
-  it("recovers with evidence scoring when semantic grades reject every candidate", () => {
+  it("does not discard a hard-valid candidate for missing soft evidence", () => {
     const request = intent({
       requiredGenres: ["romance", "comedy"],
       preferences: [
@@ -424,9 +533,40 @@ describe("recommendation quality", () => {
       },
     ]);
 
-    expect(result.usedFallback).toBe(true);
+    expect(result.usedFallback).toBe(false);
     expect(result.recommendations.map((candidate) => candidate.title)).toEqual([
       "The Drama",
     ]);
+  });
+
+  it("treats multiple positive genres as an inclusive request", () => {
+    const request = intent({ requiredGenres: ["romance", "comedy"] });
+    const comedy = recommendation({ genres: ["Comedy"], genreIds: [35] });
+
+    expect(
+      applyCandidateGrades([comedy], request, [
+        deterministicGrade(comedy, request),
+      ]),
+    ).toHaveLength(1);
+  });
+
+  it("enforces an explicitly requested production origin", () => {
+    const request = intent({ productionOriginCountries: ["GB"] });
+    const british = recommendation({
+      id: 1,
+      productionCountries: ["United Kingdom", "GB"],
+    });
+    const american = recommendation({
+      id: 2,
+      productionCountries: ["United States of America", "US"],
+    });
+
+    expect(
+      applyCandidateGrades(
+        [american, british],
+        request,
+        [american, british].map((movie) => deterministicGrade(movie, request)),
+      ).map((movie) => movie.id),
+    ).toEqual([british.id]);
   });
 });

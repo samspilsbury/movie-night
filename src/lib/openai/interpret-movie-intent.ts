@@ -22,11 +22,12 @@ Rules:
 - For a positive reference movie, add two to five broadly recognised similarityTraits that explain what the user is likely asking to carry over. Do not infer cast, director, franchise, or character names unless the user explicitly requests them.
 - Put every explicitly named actor requested for the new film in castMembers, using their standard credited name. “Starring Paul Rudd” must produce castMembers: ["Paul Rudd"]. A request for a cast similar to a reference film is not an explicit actor name and leaves castMembers empty.
 - Always return referenceCastMembers as an empty array. The server derives it from reference-film credits when the viewer asks for a similar cast.
+- Put explicitly requested production nationalities in productionOriginCountries as ISO 3166-1 alpha-2 codes. “A British comedy” means productionOriginCountries: ["GB"]. Do not also create a story-setting preference unless the viewer says the story is set there.
 - Turn abstract intent into two to eight concrete, TMDB-searchable keyword concepts when they materially improve retrieval. Do not add unrelated concepts merely to fill the array.
 - Use only the allowed genre enum values.
 - Use a two-letter ISO 639-1 original-language code only when the viewer explicitly asks for a language.
 - Do not infer a year, runtime, or language constraint unless the viewer expresses it.
-- "set in" describes story setting, not production country or original language.
+- "set in" describes story setting, not production country or original language. “A comedy set in Britain” creates a United Kingdom setting preference and leaves productionOriginCountries empty.
 - "all-star cast" or "ensemble cast" is a primary cast preference; do not reduce it to a genre.
 - "sexy" is a primary tone preference. Add relevant concepts such as sensuality or eroticism, without treating any adult-rated drama as a match.
 - "chick flick" is a style request normally associated with female-centred relationships, romance, friendship, or comedy; it is not satisfied by an unrelated action film with incidental UK locations.

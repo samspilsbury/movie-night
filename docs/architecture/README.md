@@ -15,3 +15,4 @@ slug, for example `0001-choose-web-framework.md`.
 - [ADR 0003: Live recommendation pipeline](decisions/0003-adopt-live-recommendation-pipeline.md)
 - [ADR 0004: Vercel deployment](decisions/0004-deploy-mvp-on-vercel.md)
 - [ADR 0005: Relevance-first candidate reranking](decisions/0005-adopt-relevance-first-reranking.md)
+- [ADR 0006: Breadth-first ranked recommendation pool](decisions/0006-adopt-breadth-first-ranked-pool.md)

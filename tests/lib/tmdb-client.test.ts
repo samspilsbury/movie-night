@@ -13,6 +13,7 @@ const baseIntent: MovieIntent = {
   excludedGenres: ["horror"],
   castMembers: [],
   referenceCastMembers: [],
+  productionOriginCountries: [],
   preferences: [
     {
       category: "mood",
@@ -110,7 +111,7 @@ describe("TMDB client", () => {
     expect(url.pathname).toBe("/3/discover/movie");
     expect(url.searchParams.get("vote_average.gte")).toBe("6.2");
     expect(url.searchParams.get("vote_count.gte")).toBe("100");
-    expect(url.searchParams.get("with_genres")).toBe("53");
+    expect(url.searchParams.get("with_genres")).toBe("53|878");
     expect(url.searchParams.get("without_genres")).toBe("27");
     expect(url.searchParams.get("with_runtime.lte")).toBe("120");
     expect(url.searchParams.get("primary_release_date.gte")).toBe("1990-01-01");
@@ -122,9 +123,38 @@ describe("TMDB client", () => {
       Authorization: "Bearer test-token",
     });
     expect(options.next?.revalidate).toBe(3_600);
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(candidates).toHaveLength(9);
     expect(candidates.map((movie) => movie.id)).not.toContain(2);
+  });
+
+  it("builds a sixty-film shortlist from the broad retrieval backbone", async () => {
+    const fetchMock = vi.fn().mockImplementation((request: URL) => {
+      const url = new URL(request);
+      const page = Number(url.searchParams.get("page"));
+      const sortOffset =
+        url.searchParams.get("sort_by") === "vote_count.desc" ? 60 : 0;
+      return Promise.resolve(
+        jsonResponse({
+          results: Array.from({ length: 20 }, (_, index) =>
+            tmdbMovie({
+              id: sortOffset + (page - 1) * 20 + index + 1,
+              genre_ids: [53],
+              vote_count: 1_000 + index,
+            }),
+          ),
+        }),
+      );
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const candidates = await discoverCandidatePool(
+      { ...baseIntent, preferredGenres: [] },
+      [],
+    );
+
+    expect(candidates).toHaveLength(60);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
   });
 
   it("keeps useful candidates when individual keyword and discovery lanes fail", async () => {
@@ -167,15 +197,17 @@ describe("TMDB client", () => {
     ).toHaveLength(2);
     expect(
       paths.filter((url) => url.pathname === "/3/discover/movie"),
-    ).toHaveLength(3);
-    expect(candidates.map((movie) => movie.id)).toEqual([21, 22]);
+    ).toHaveLength(6);
+    expect(candidates.map((movie) => movie.id)).toEqual([22]);
   });
 
-  it("adds a UK-focused retrieval lane for an explicit UK setting", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        results: [tmdbMovie({ id: 30, genre_ids: [35, 10749] })],
-      }),
+  it("keeps story setting soft and production origin explicit", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({
+          results: [tmdbMovie({ id: 30, genre_ids: [35, 10749] })],
+        }),
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
@@ -203,7 +235,28 @@ describe("TMDB client", () => {
       discoverUrls.filter(
         (url) => url.searchParams.get("with_origin_country") === "GB",
       ),
-    ).toHaveLength(2);
+    ).toHaveLength(0);
+
+    fetchMock.mockClear();
+    await discoverCandidatePool(
+      {
+        ...baseIntent,
+        requiredGenres: ["comedy"],
+        preferredGenres: [],
+        excludedGenres: [],
+        preferences: [],
+        productionOriginCountries: ["GB"],
+      },
+      [],
+    );
+    const originUrls = fetchMock.mock.calls
+      .map(([request]) => new URL(request))
+      .filter((url) => url.pathname === "/3/discover/movie");
+    expect(
+      originUrls.every(
+        (url) => url.searchParams.get("with_origin_country") === "GB",
+      ),
+    ).toBe(true);
   });
 
   it("selects the exact referenced title and excludes its collection", async () => {
@@ -241,7 +294,7 @@ describe("TMDB client", () => {
     expect(String(fetchMock.mock.calls[2]?.[0])).toContain("/collection/99");
   });
 
-  it("uses the named cast and a reference movie's lead cast for discovery", async () => {
+  it("resolves reference cast and preserves a named cast constraint across broad lanes", async () => {
     const referenceFetch = vi
       .fn()
       .mockResolvedValueOnce(
@@ -306,7 +359,7 @@ describe("TMDB client", () => {
     const discoveryUrls = discoveryFetch.mock.calls
       .map(([request]) => new URL(request))
       .filter((url) => url.pathname === "/3/discover/movie");
-    expect(discoveryUrls).toHaveLength(3);
+    expect(discoveryUrls).toHaveLength(5);
     expect(
       discoveryUrls.every(
         (url) => url.searchParams.get("with_cast") === "22226",

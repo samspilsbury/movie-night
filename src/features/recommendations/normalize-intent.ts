@@ -43,6 +43,9 @@ function castMembersFromPreferences(preferences: IntentPreference[]): string[] {
 }
 
 export function normalizeMovieIntent(intent: MovieIntent): MovieIntent {
+  const productionOriginCountries = unique(
+    intent.productionOriginCountries ?? [],
+  ).map((country) => country.toUpperCase());
   const castMembers = unique([
     ...intent.castMembers,
     ...castMembersFromPreferences(intent.preferences),
@@ -50,10 +53,23 @@ export function normalizeMovieIntent(intent: MovieIntent): MovieIntent {
   const castIsUnchanged =
     castMembers.length === intent.castMembers.length &&
     castMembers.every((member, index) => member === intent.castMembers[index]);
+  const originsAreUnchanged =
+    productionOriginCountries.length ===
+      intent.productionOriginCountries.length &&
+    productionOriginCountries.every(
+      (country, index) => country === intent.productionOriginCountries[index],
+    );
   let normalizedIntent: MovieIntent =
-    castIsUnchanged && intent.referenceCastMembers.length === 0
+    castIsUnchanged &&
+    intent.referenceCastMembers.length === 0 &&
+    originsAreUnchanged
       ? intent
-      : { ...intent, castMembers, referenceCastMembers: [] };
+      : {
+          ...intent,
+          castMembers,
+          referenceCastMembers: [],
+          productionOriginCountries,
+        };
   const chickFlickPreferences = normalizedIntent.preferences.filter(
     (preference) => CHICK_FLICK_PATTERN.test(normalise(preference.value)),
   );
@@ -94,10 +110,12 @@ export function normalizeMovieIntent(intent: MovieIntent): MovieIntent {
       ) as MovieIntent["preferredGenres"],
       preferences: remainingPreferences,
       keywordTerms: unique([
-        "chick flick",
-        ...(hasUnitedKingdomSetting ? ["United Kingdom"] : []),
         "female friendship",
         "romantic relationship",
+        ...(hasUnitedKingdomSetting
+          ? ["London, England", "England", "United Kingdom"]
+          : []),
+        "chick flick",
         ...normalizedIntent.keywordTerms,
       ]).slice(0, 8),
     };
@@ -133,5 +151,13 @@ export function normalizeMovieIntent(intent: MovieIntent): MovieIntent {
   );
 
   remainingPreferences.splice(firstTwistIndex, 0, canonicalPreference);
-  return { ...normalizedIntent, preferences: remainingPreferences };
+  return {
+    ...normalizedIntent,
+    preferences: remainingPreferences,
+    keywordTerms: unique([
+      "plot twist",
+      "twist ending",
+      ...normalizedIntent.keywordTerms,
+    ]).slice(0, 8),
+  };
 }

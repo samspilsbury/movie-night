@@ -1,6 +1,6 @@
 # ADR 0005: Adopt relevance-first candidate reranking
 
-- Status: Accepted
+- Status: Superseded by ADR 0006
 - Date: 2026-08-18
 - Owners: Project team
 - Supersedes: ADR 0003 sections “Quality policy”, “Exclusions and session
@@ -35,6 +35,10 @@ for the size or average rating of a queue.
 - Known ambiguous phrases are expanded conservatively. For example, “chick
   flick” adds romance, comedy, and female-relationship retrieval signals while
   preserving an explicit UK setting as a primary criterion.
+- Twist language is normalised for both scoring and retrieval. Phrases such as
+  “big twist” or “shocking twist” add TMDB's canonical `plot twist` and
+  `twist ending` terms, while structural evidence such as unreliable identity,
+  manipulated memory, or gaslighting can support a spoiler-sensitive match.
 
 ### Retrieval and enrichment
 

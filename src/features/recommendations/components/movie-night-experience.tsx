@@ -13,7 +13,7 @@ import type {
   RecommendationBatch,
 } from "../types";
 
-const SESSION_KEY = "movie-night:recommendation-session:v3";
+const SESSION_KEY = "movie-night:recommendation-session:v4";
 
 type View = "prompt" | "loading" | "recommendation" | "programme-end" | "error";
 
@@ -22,6 +22,7 @@ type RecommendationSession = {
   intent: MovieIntent;
   recommendations: MovieRecommendation[];
   recommendationIndex: number;
+  remainingRecommendations: MovieRecommendation[];
   remainingCandidateIds: number[];
   shownMovieIds: number[];
   referenceExclusionIds: number[];
@@ -67,7 +68,6 @@ export function MovieNightExperience() {
   const [prompt, setPrompt] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
   const [endMessage, setEndMessage] = useState("");
-  const [isRefreshing, setIsRefreshing] = useState(false);
   const [isChangingRecommendation, setIsChangingRecommendation] =
     useState(false);
   const [session, setSession] = useState<RecommendationSession | null>(null);
@@ -152,6 +152,7 @@ export function MovieNightExperience() {
         intent: batch.intent,
         recommendations: batch.recommendations,
         recommendationIndex: 0,
+        remainingRecommendations: batch.remainingRecommendations,
         remainingCandidateIds: batch.remainingCandidateIds,
         shownMovieIds: [],
         referenceExclusionIds: batch.referenceExclusionIds,
@@ -207,57 +208,20 @@ export function MovieNightExperience() {
     setView("programme-end");
   }
 
-  async function searchAgain() {
-    if (!session || isRefreshing || !session.remainingCandidateIds.length)
-      return;
-    setIsRefreshing(true);
+  function searchAgain() {
+    if (!session || !session.remainingRecommendations.length) return;
     setEndMessage("");
-
-    try {
-      const batch = await requestBatch({
-        prompt: null,
-        intent: session.intent,
-        candidateIds: session.remainingCandidateIds,
-        excludedMovieIds: [
-          ...new Set([
-            ...session.shownMovieIds,
-            ...session.referenceExclusionIds,
-            ...session.recommendations.map(
-              (recommendation) => recommendation.id,
-            ),
-          ]),
-        ],
-      });
-
-      if (!batch.recommendations.length) {
-        setSession({
-          ...session,
-          remainingCandidateIds: [],
-        });
-        setEndMessage(
-          "We couldn't find another confident batch in this search. Refine the brief to open up a new programme.",
-        );
-        return;
-      }
-
-      setMovie(batch.recommendations[0]);
-      setSession({
-        ...session,
-        recommendations: batch.recommendations,
-        recommendationIndex: 0,
-        remainingCandidateIds: batch.remainingCandidateIds,
-        demoMode: batch.demoMode,
-      });
-      setView("recommendation");
-    } catch (error) {
-      setEndMessage(
-        error instanceof Error
-          ? error.message
-          : "We couldn't prepare the next programme. Try again.",
-      );
-    } finally {
-      setIsRefreshing(false);
-    }
+    const recommendations = session.remainingRecommendations.slice(0, 5);
+    const remainingRecommendations = session.remainingRecommendations.slice(5);
+    setMovie(recommendations[0]);
+    setSession({
+      ...session,
+      recommendations,
+      recommendationIndex: 0,
+      remainingRecommendations,
+      remainingCandidateIds: remainingRecommendations.map((movie) => movie.id),
+    });
+    setView("recommendation");
   }
 
   function refinePrompt() {
@@ -311,8 +275,8 @@ export function MovieNightExperience() {
         {view === "programme-end" && session ? (
           <ProgrammeEnd
             programmeSize={session.recommendations.length}
-            canSearchAgain={session.remainingCandidateIds.length > 0}
-            isSearching={isRefreshing}
+            canSearchAgain={session.remainingRecommendations.length > 0}
+            isSearching={false}
             message={endMessage}
             onSearchAgain={searchAgain}
             onRefinePrompt={refinePrompt}

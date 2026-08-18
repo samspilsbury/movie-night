@@ -8,10 +8,8 @@ import type {
 export const DISCOVERY_MINIMUM_RATING = 6.2;
 export const DISCOVERY_MINIMUM_VOTES = 100;
 export const CANDIDATE_POOL_SIZE = 60;
-export const PRE_SHORTLIST_SIZE = 12;
-export const PROGRAMME_FILL_LIMIT = 48;
+export const RANKED_POOL_SIZE = 50;
 export const RECOMMENDATION_COUNT = 5;
-export const MINIMUM_RELEVANCE_SCORE = 55;
 
 const GENRE_IDS: Record<string, number> = {
   action: 28,
@@ -80,7 +78,11 @@ function meaningfulWords(value: string): string[] {
 const TWIST_REQUEST_PATTERN =
   /plot twist|unexpected (twist|revelation)|surprise (ending|revelation)/;
 const TWIST_EVIDENCE_PATTERN =
-  /plot twist|twist ending|surprise ending|unexpected (turn|revelation|place|places|direction)|startling (final )?reveal|hidden truth|discover(s|ed)? the truth|repeating the same day/;
+  /plot twist|twist ending|surprise ending|unexpected (turn|revelation|place|places|direction)|startling (final )?reveal|hidden truth|discover(s|ed)? the truth|repeating the same day|dual identity|alter ego|split personality|dissociative identity|implanted memory|suppressed memory|unreliable narrator|different accounts|double cross|gaslighting|turning the tables|staged death|secret identity/;
+const PSYCHOLOGICAL_REQUEST_PATTERN =
+  /psychological|mind games|unreliable perception|mental tension/;
+const PSYCHOLOGICAL_EVIDENCE_PATTERN =
+  /psychological|mind games?|gaslight|hypnot|amnesia|memory|loss of sense of reality|dual identity|alter ego|split personality|dissociative identity|double life|paranoi|obsessive compulsive disorder|mental illness|manipulation|interrogation|unreliable|different accounts|deception|deceived|con game|double cross|twisted game|hidden motive/;
 const UNITED_KINGDOM_REQUEST_PATTERN =
   /united kingdom|\buk\b|britain|british|england|scotland|wales|northern ireland/;
 const UNITED_KINGDOM_EVIDENCE_PATTERN =
@@ -88,9 +90,11 @@ const UNITED_KINGDOM_EVIDENCE_PATTERN =
 const CHICK_FLICK_REQUEST_PATTERN =
   /chick flick|female centred|female centered|women centred|women centered/;
 const FEMALE_RELATIONSHIP_EVIDENCE_PATTERN =
-  /woman|women|female|girl|sister|mother|daughter|bride/;
+  /\b(woman|women|female|girl|girls|girlfriend|sister|sisters|mother|daughter|bride)\b/;
 const RELATIONSHIP_EVIDENCE_PATTERN =
-  /friend|sister|relationship|romance|romantic|love|dating|wedding|marriage/;
+  /friend|sister|mother daughter|father daughter|daughter|dating|wedding|bride|single woman|romantic comedy/;
+const FEMALE_CENTRED_EVIDENCE_PATTERN =
+  /female friendship|women friends|girls friendship|sister|mother daughter|father daughter|bride|wedding|single woman|romantic comedy|teenage girl|all girl|girl group|female lead|woman centred/;
 const ANCHORMAN_STYLE_REQUEST_PATTERN =
   /anchorman|absurdist|irreverent|newsroom satire|ensemble workplace/;
 const IRREVERENT_COMEDY_EVIDENCE_PATTERN =
@@ -106,6 +110,12 @@ function textMatches(value: string, corpus: string): boolean {
     return true;
   }
   if (
+    PSYCHOLOGICAL_REQUEST_PATTERN.test(phrase) &&
+    PSYCHOLOGICAL_EVIDENCE_PATTERN.test(corpus)
+  ) {
+    return true;
+  }
+  if (
     UNITED_KINGDOM_REQUEST_PATTERN.test(phrase) &&
     UNITED_KINGDOM_EVIDENCE_PATTERN.test(corpus)
   ) {
@@ -115,7 +125,7 @@ function textMatches(value: string, corpus: string): boolean {
     CHICK_FLICK_REQUEST_PATTERN.test(phrase) &&
     FEMALE_RELATIONSHIP_EVIDENCE_PATTERN.test(corpus) &&
     RELATIONSHIP_EVIDENCE_PATTERN.test(corpus) &&
-    /romance|comedy/.test(corpus)
+    (/romance/.test(corpus) || FEMALE_CENTRED_EVIDENCE_PATTERN.test(corpus))
   ) {
     return true;
   }
@@ -173,7 +183,7 @@ function preferenceMatch(
     const overview = normalise(candidate.overview);
     const keywords = normalise(candidate.keywordNames.join(" "));
     if (UNITED_KINGDOM_REQUEST_PATTERN.test(normalise(preference.value))) {
-      return UNITED_KINGDOM_EVIDENCE_PATTERN.test(keywords);
+      return UNITED_KINGDOM_EVIDENCE_PATTERN.test(`${overview} ${keywords}`);
     }
     return textMatches(preference.value, normalise(`${overview} ${keywords}`));
   }
@@ -216,6 +226,28 @@ function qualitySignal(
   return Math.max(0, Math.min(1, (bayesianRating - 5.5) / 3.5));
 }
 
+function sourceAgreementSignal(
+  candidate: Pick<MovieCandidate, "discoverySources">,
+): number {
+  const sourceWeights: Record<
+    MovieCandidate["discoverySources"][number],
+    number
+  > = {
+    focused: 1,
+    cast: 0.9,
+    keyword: 0.8,
+    genre: 0.65,
+    broad: 0.35,
+  };
+  const strongestSource = Math.max(
+    ...candidate.discoverySources.map((source) => sourceWeights[source]),
+  );
+  return Math.min(
+    strongestSource + Math.max(candidate.discoverySources.length - 1, 0) * 0.1,
+    1,
+  );
+}
+
 export function candidateScore(
   candidate: Pick<
     MovieCandidate,
@@ -248,35 +280,14 @@ export function candidateScore(
   const termCoverage = terms.length
     ? terms.filter((term) => textMatches(term, corpus)).length / terms.length
     : 0.5;
-  const sourceWeights: Record<
-    MovieCandidate["discoverySources"][number],
-    number
-  > = {
-    focused: 1,
-    cast: 0.9,
-    keyword: 0.72,
-    genre: 0.45,
-    broad: 0.15,
-  };
-  const strongestSource = Math.max(
-    ...candidate.discoverySources.map((source) => sourceWeights[source]),
-  );
-  const sourceSignal = Math.min(
-    strongestSource + Math.max(candidate.discoverySources.length - 1, 0) * 0.08,
-    1,
-  );
-  const popularitySignal = Math.min(
-    Math.log10(candidate.popularity + 1) / 3,
-    1,
-  );
+  const sourceSignal = sourceAgreementSignal(candidate);
 
   return Number(
     (
-      genreCoverage * 38 +
-      termCoverage * 27 +
-      qualitySignal(candidate) * 25 +
-      sourceSignal * 7 +
-      popularitySignal * 3
+      genreCoverage * 36 +
+      termCoverage * 29 +
+      qualitySignal(candidate) * 30 +
+      sourceSignal * 5
     ).toFixed(3),
   );
 }
@@ -309,7 +320,8 @@ export function failsHardConstraints(
   const candidateCast = candidate.cast.map(normalise);
 
   return (
-    requiredGenres.some((id) => !candidate.genreIds.includes(id)) ||
+    (requiredGenres.length > 0 &&
+      !requiredGenres.some((id) => candidate.genreIds.includes(id))) ||
     excludedGenres.some((id) => candidate.genreIds.includes(id)) ||
     (intent.minimumYear !== null &&
       (year === null || year < intent.minimumYear)) ||
@@ -320,6 +332,12 @@ export function failsHardConstraints(
         candidate.runtimeMinutes > intent.maximumRuntimeMinutes)) ||
     (intent.originalLanguage !== null &&
       candidate.originalLanguage !== intent.originalLanguage) ||
+    (intent.productionOriginCountries.length > 0 &&
+      !intent.productionOriginCountries.some((country) =>
+        candidate.productionCountries
+          .map(normalise)
+          .includes(normalise(country)),
+      )) ||
     intent.castMembers.some(
       (member) => !candidateCast.includes(normalise(member)),
     )
@@ -354,20 +372,23 @@ export function deterministicGrade(
   );
   const preferenceCoverage = preferenceWeight
     ? matchedWeight / preferenceWeight
-    : 0.65;
+    : 1;
   const genreCoverage = desiredGenres.length
     ? matchedGenres.length / desiredGenres.length
-    : 0.65;
+    : 1;
   const contradictions = failsHardConstraints(candidate, intent)
     ? ["conflicts with a hard constraint"]
     : [];
   const relevanceScore = contradictions.length
     ? 0
     : Math.round(
-        preferenceCoverage * 62 +
-          genreCoverage * 23 +
-          qualitySignal(candidate) * 12 +
-          Math.min(candidate.castPopularity / 100, 1) * 3,
+        intent.preferences.length && desiredGenres.length
+          ? preferenceCoverage * 70 + genreCoverage * 30
+          : intent.preferences.length
+            ? preferenceCoverage * 100
+            : desiredGenres.length
+              ? genreCoverage * 100
+              : 65,
       );
   const matchedCriteria = [
     ...matchedPreferences.map((preference) => preference.value),
@@ -389,7 +410,7 @@ export function deterministicGrade(
   };
 }
 
-export function applyCandidateGrades(
+export function rankAllCandidates(
   candidates: MovieRecommendation[],
   intent: MovieIntent,
   grades: CandidateGrade[],
@@ -400,12 +421,13 @@ export function applyCandidateGrades(
     .map((candidate) => {
       const grade =
         gradesById.get(candidate.id) ?? deterministicGrade(candidate, intent);
-      const relevanceScore = grade.missingPrimaryCriteria.length
-        ? Math.min(grade.relevanceScore, MINIMUM_RELEVANCE_SCORE - 1)
-        : grade.relevanceScore;
+      const relevanceScore = grade.relevanceScore;
+      const relevanceConfidence = Math.pow(relevanceScore / 100, 2);
       const finalScore = grade.contradictions.length
         ? 0
-        : relevanceScore * 0.82 + candidate.score * 0.18;
+        : relevanceConfidence * 65 +
+          qualitySignal(candidate) * 30 +
+          sourceAgreementSignal(candidate) * 5;
       return {
         ...candidate,
         score: Number(finalScore.toFixed(3)),
@@ -414,13 +436,28 @@ export function applyCandidateGrades(
         matchReason: grade.matchReason,
       };
     })
-    .filter(
-      (candidate) =>
-        !failsHardConstraints(candidate, intent) &&
-        candidate.relevanceScore >= MINIMUM_RELEVANCE_SCORE,
-    )
-    .sort((left, right) => right.score - left.score)
-    .slice(0, RECOMMENDATION_COUNT);
+    .filter((candidate) => !failsHardConstraints(candidate, intent))
+    .sort((left, right) => {
+      const relevanceGap = right.relevanceScore - left.relevanceScore;
+      if (Math.abs(relevanceGap) >= 15) return relevanceGap;
+      return (
+        right.score - left.score ||
+        right.voteCount - left.voteCount ||
+        right.popularity - left.popularity ||
+        left.id - right.id
+      );
+    });
+}
+
+export function applyCandidateGrades(
+  candidates: MovieRecommendation[],
+  intent: MovieIntent,
+  grades: CandidateGrade[],
+): MovieRecommendation[] {
+  return rankAllCandidates(candidates, intent, grades).slice(
+    0,
+    RECOMMENDATION_COUNT,
+  );
 }
 
 export function applyCandidateGradesWithFallback(
@@ -428,30 +465,8 @@ export function applyCandidateGradesWithFallback(
   intent: MovieIntent,
   grades: CandidateGrade[],
 ): { recommendations: MovieRecommendation[]; usedFallback: boolean } {
-  const recommendations = applyCandidateGrades(candidates, intent, grades);
-  if (recommendations.length >= RECOMMENDATION_COUNT) {
-    return { recommendations, usedFallback: false };
-  }
-
-  const deterministicRecommendations = applyCandidateGrades(
-    candidates,
-    intent,
-    candidates.map((candidate) => deterministicGrade(candidate, intent)),
-  );
-  const recommendationIds = new Set(
-    recommendations.map((candidate) => candidate.id),
-  );
-  const supplemented = [
-    ...recommendations,
-    ...deterministicRecommendations.filter(
-      (candidate) => !recommendationIds.has(candidate.id),
-    ),
-  ]
-    .sort((left, right) => right.score - left.score)
-    .slice(0, RECOMMENDATION_COUNT);
-
   return {
-    recommendations: supplemented,
-    usedFallback: true,
+    recommendations: applyCandidateGrades(candidates, intent, grades),
+    usedFallback: false,
   };
 }

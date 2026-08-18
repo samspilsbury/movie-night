@@ -10,6 +10,7 @@ function intent(overrides: Partial<MovieIntent> = {}): MovieIntent {
     excludedGenres: [],
     castMembers: [],
     referenceCastMembers: [],
+    productionOriginCountries: [],
     preferences: [],
     keywordTerms: [],
     referenceMovies: [],
@@ -53,6 +54,45 @@ describe("movie intent normalization", () => {
         source: "explicit",
       },
     ]);
+    expect(normalized.keywordTerms.slice(0, 2)).toEqual([
+      "plot twist",
+      "twist ending",
+    ]);
+  });
+
+  it("adds canonical retrieval terms when the model calls a twist shocking", () => {
+    const normalized = normalizeMovieIntent(
+      intent({
+        requiredGenres: ["thriller"],
+        preferences: [
+          {
+            category: "theme",
+            value: "psychological tension and mind games",
+            priority: "primary",
+            source: "explicit",
+          },
+          {
+            category: "theme",
+            value: "plot twist",
+            priority: "primary",
+            source: "explicit",
+          },
+        ],
+        keywordTerms: [
+          "psychological suspense",
+          "mind games",
+          "unreliable perception",
+          "shocking twist",
+        ],
+      }),
+    );
+
+    expect(normalized.keywordTerms.slice(0, 4)).toEqual([
+      "plot twist",
+      "twist ending",
+      "psychological suspense",
+      "mind games",
+    ]);
   });
 
   it("leaves unrelated intent untouched", () => {
@@ -95,10 +135,10 @@ describe("movie intent normalization", () => {
       "female-centred relationships and friendship",
     );
     expect(normalized.keywordTerms.slice(0, 4)).toEqual([
-      "chick flick",
-      "United Kingdom",
       "female friendship",
       "romantic relationship",
+      "London, England",
+      "England",
     ]);
   });
 

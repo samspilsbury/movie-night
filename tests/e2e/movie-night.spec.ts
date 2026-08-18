@@ -6,6 +6,7 @@ const intent = {
   excludedGenres: [],
   castMembers: [],
   referenceCastMembers: [],
+  productionOriginCountries: [],
   preferences: [
     {
       category: "mood",
@@ -69,29 +70,20 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     recommendation(104, "Calibre"),
     recommendation(105, "The Invitation"),
   ];
-  let continuationBody: unknown = null;
+  let recommendationRequests = 0;
 
   await page.route("**/api/recommendations", async (route) => {
-    const body = route.request().postDataJSON() as { candidateIds?: number[] };
-    if (body.candidateIds?.length) {
-      continuationBody = body;
-      await route.fulfill({
-        json: {
-          recommendations: [recommendation(201, "The Next Feature")],
-          remainingCandidateIds: [],
-          intent,
-          referenceExclusionIds: [],
-          demoMode: true,
-        },
-      });
-      return;
-    }
+    recommendationRequests += 1;
 
     await new Promise((resolve) => setTimeout(resolve, 250));
     await route.fulfill({
       json: {
         recommendations: firstFive,
-        remainingCandidateIds: [201],
+        remainingRecommendations: [
+          recommendation(201, "The Next Feature"),
+          recommendation(202, "Second Encore"),
+        ],
+        remainingCandidateIds: [201, 202],
         intent,
         referenceExclusionIds: [],
         demoMode: true,
@@ -144,14 +136,30 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     const copy = document
       .querySelector(".feature-copy")!
       .getBoundingClientRect();
+    const supporting = document
+      .querySelector(".feature-supporting")!
+      .getBoundingClientRect();
     return {
       poster: {
         top: poster.top,
+        left: poster.left,
         right: poster.right,
         bottom: poster.bottom,
         width: poster.width,
       },
-      copy: { top: copy.top, left: copy.left, width: copy.width },
+      copy: {
+        top: copy.top,
+        left: copy.left,
+        right: copy.right,
+        bottom: copy.bottom,
+        width: copy.width,
+      },
+      supporting: {
+        top: supporting.top,
+        left: supporting.left,
+        right: supporting.right,
+        width: supporting.width,
+      },
     };
   });
   if ((page.viewportSize()?.width ?? 0) > 640) {
@@ -160,8 +168,23 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
       Math.abs(featureLayout.poster.top - featureLayout.copy.top),
     ).toBeLessThan(2);
     expect(featureLayout.poster.width).toBeLessThan(featureLayout.copy.width);
+    expect(featureLayout.supporting.top).toBeGreaterThanOrEqual(
+      Math.max(featureLayout.poster.bottom, featureLayout.copy.bottom),
+    );
+    expect(
+      Math.abs(featureLayout.supporting.left - featureLayout.poster.left),
+    ).toBeLessThan(2);
+    expect(
+      Math.abs(featureLayout.supporting.right - featureLayout.copy.right),
+    ).toBeLessThan(2);
+    expect(featureLayout.supporting.width).toBeGreaterThan(
+      featureLayout.copy.width,
+    );
   } else {
     expect(featureLayout.poster.bottom).toBeLessThan(featureLayout.copy.top);
+    expect(featureLayout.copy.bottom).toBeLessThan(
+      featureLayout.supporting.top,
+    );
   }
 
   const tryAnother = page.getByRole("button", { name: /Try another film/ });
@@ -182,14 +205,12 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
 
   await page.getByRole("button", { name: "Find five more films" }).click();
   await expect(page.locator("#feature-title")).toHaveText("The Next Feature");
+  expect(recommendationRequests).toBe(1);
+  await tryAnother.click();
+  await expect(page.locator("#feature-title")).toHaveText("Second Encore");
   await tryAnother.click();
   await expect(
-    page.getByText("That was the only confident match in this batch"),
+    page.getByText("You've seen all 2 films in this batch"),
   ).toBeVisible();
-  await expect(page.getByText("01 film", { exact: true })).toBeVisible();
-  expect(continuationBody).toMatchObject({
-    prompt: null,
-    candidateIds: [201],
-    intent,
-  });
+  await expect(page.getByText("02 films", { exact: true })).toBeVisible();
 });

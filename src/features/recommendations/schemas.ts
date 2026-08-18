@@ -25,6 +25,14 @@ export const movieIntentSchema = z.object({
   keywordTerms: z.array(z.string().trim().min(1).max(50)).max(8),
   castMembers: z.array(z.string().trim().min(1).max(100)).max(6),
   referenceCastMembers: z.array(z.string().trim().min(1).max(100)).max(8),
+  productionOriginCountries: z
+    .array(
+      z
+        .string()
+        .trim()
+        .regex(/^[A-Z]{2}$/),
+    )
+    .max(4),
   referenceMovies: z.array(referenceMovieSchema).max(5),
   minimumYear: z.number().int().min(1880).max(currentYear).nullable(),
   maximumYear: z.number().int().min(1880).max(currentYear).nullable(),

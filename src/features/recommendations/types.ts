@@ -53,6 +53,7 @@ export type MovieIntent = {
   keywordTerms: string[];
   castMembers: string[];
   referenceCastMembers: string[];
+  productionOriginCountries: string[];
   referenceMovies: ReferenceMovie[];
   minimumYear: number | null;
   maximumYear: number | null;
@@ -111,6 +112,7 @@ export type MovieRecommendation = MovieCandidate & {
 
 export type RecommendationBatch = {
   recommendations: MovieRecommendation[];
+  remainingRecommendations: MovieRecommendation[];
   remainingCandidateIds: number[];
   intent: MovieIntent;
   referenceExclusionIds: number[];
