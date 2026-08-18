@@ -91,9 +91,11 @@ test("finds one film and changes the programme", async ({ page }) => {
 
   const brief = page.getByLabel("What are you in the mood for?");
   await expect(brief).toBeVisible();
-  await expect(page.getByText("Now showing")).toBeVisible();
+  await expect(page.locator("#movie-brief-title")).toHaveText(
+    "What are you in the mood for?",
+  );
   await expect(
-    page.getByRole("heading", { name: "What are you in the mood for?" }),
+    page.getByRole("heading", { name: "Now showing" }),
   ).toBeVisible();
   const marqueeSurface = await page
     .locator(".marquee__panel")

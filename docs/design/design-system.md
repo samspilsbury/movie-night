@@ -156,9 +156,9 @@ The natural-language movie-brief surface.
   restrained searchlights, a dark art-deco facade, marquee bulbs, and a short
   red-carpet threshold. These elements form one scene rather than separate
   decorative widgets.
-- Place the product question on the theatre's main venue sign, in the position
-  normally occupied by the theatre name: “What are you in the mood for?”
-- Put the real multiline text field inside the illuminated **Now Showing**
+- Place “Now Showing” on the theatre's main venue sign, in the position normally
+  occupied by the theatre name.
+- Put the product question and real multiline text field inside the illuminated
   marquee. The field must feel physically embedded in the board rather than
   placed in a form card below it.
 - The marquee contains only the masthead, example prompt, and primary action.

@@ -43,12 +43,14 @@ export function MoviePrompt({
         </div>
 
         <div className="theatre__title">
-          <h1 id="movie-brief-title">What are you in the mood for?</h1>
+          <h1>Now showing</h1>
         </div>
 
         <div className="marquee">
           <div className="marquee__panel">
-            <p className="marquee__now-showing">Now showing</p>
+            <p id="movie-brief-title" className="marquee__now-showing">
+              What are you in the mood for?
+            </p>
 
             <form className="movie-form" onSubmit={handleSubmit} noValidate>
               <label className="visually-hidden" htmlFor="movie-brief">
