@@ -97,6 +97,32 @@ test("finds one film and changes the programme", async ({ page }) => {
   await expect(
     page.getByRole("heading", { name: "Now showing" }),
   ).toBeVisible();
+  const promptLayout = await page.evaluate(() => {
+    const foyer = document.querySelector(".foyer")!.getBoundingClientRect();
+    const theatre = document.querySelector(".theatre")!.getBoundingClientRect();
+    const fontSize = (selector: string) =>
+      Number.parseFloat(
+        window.getComputedStyle(document.querySelector(selector)!).fontSize,
+      );
+
+    return {
+      foyerCenter: foyer.top + foyer.height / 2,
+      theatreCenter: theatre.top + theatre.height / 2,
+      nowShowingSize: fontSize(".theatre__title h1"),
+      questionSize: fontSize(".marquee__now-showing"),
+    };
+  });
+
+  expect(promptLayout.nowShowingSize).toBeGreaterThan(
+    promptLayout.questionSize,
+  );
+
+  if ((page.viewportSize()?.width ?? 0) <= 640) {
+    expect(
+      Math.abs(promptLayout.foyerCenter - promptLayout.theatreCenter),
+    ).toBeLessThan(24);
+  }
+
   const marqueeSurface = await page
     .locator(".marquee__panel")
     .evaluate((element) => window.getComputedStyle(element).backgroundColor);
