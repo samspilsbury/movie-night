@@ -1,41 +1,38 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { Countdown } from "./countdown";
 import { MoviePrompt } from "./movie-prompt";
 import { MovieReveal } from "./movie-reveal";
+import { PopcornTransition } from "./popcorn-transition";
+import { ProgrammeEnd } from "./programme-end";
 import type {
-  MovieCandidate,
   MovieIntent,
   MovieRecommendation,
   RecommendationBatch,
 } from "../types";
 
-const SESSION_KEY = "movie-night:recommendation-session:v1";
-const LAST_QUALITY_STAGE = 3;
+const SESSION_KEY = "movie-night:recommendation-session:v2";
 
-type View = "prompt" | "loading" | "recommendation" | "error";
+type View = "prompt" | "loading" | "recommendation" | "programme-end" | "error";
 
 type RecommendationSession = {
   prompt: string;
   intent: MovieIntent;
-  candidates: MovieCandidate[];
-  candidateIndex: number;
+  recommendations: MovieRecommendation[];
+  recommendationIndex: number;
+  remainingCandidateIds: number[];
   shownMovieIds: number[];
   referenceExclusionIds: number[];
-  qualityStage: number;
   demoMode: boolean;
 };
 
 type SavedSession = {
   session: RecommendationSession;
   movie: MovieRecommendation;
+  view: "recommendation" | "programme-end";
 };
-
-function delay(milliseconds: number) {
-  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
-}
 
 async function readError(response: Response, fallback: string) {
   try {
@@ -46,96 +43,44 @@ async function readError(response: Response, fallback: string) {
   }
 }
 
-async function requestMovie(
-  candidate: MovieCandidate,
-  intent: MovieIntent,
-): Promise<MovieRecommendation> {
-  const response = await fetch(`/api/movies/${candidate.id}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ intent }),
-  });
-
-  if (!response.ok) {
-    throw new Error(await readError(response, "We couldn't load this film."));
-  }
-
-  const payload = (await response.json()) as { movie: MovieRecommendation };
-  return payload.movie;
-}
-
-async function requestBatchAcrossStages({
-  prompt,
-  intent,
-  excludedMovieIds,
-  startStage,
-}: {
+async function requestBatch(body: {
   prompt: string | null;
   intent: MovieIntent | null;
   excludedMovieIds: number[];
-  startStage: number;
+  candidateIds: number[];
 }): Promise<RecommendationBatch> {
-  let currentIntent = intent;
-  let stage = startStage;
-  let accumulatedReferenceIds: number[] = [];
-  let exclusions = [...excludedMovieIds];
-  let lastBatch: RecommendationBatch | null = null;
-
-  while (stage <= LAST_QUALITY_STAGE) {
-    const response = await fetch("/api/recommendations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: currentIntent ? null : prompt,
-        intent: currentIntent,
-        excludedMovieIds: exclusions,
-        qualityStage: stage,
-      }),
-    });
-
-    if (!response.ok) {
-      throw new Error(
-        await readError(response, "We couldn't reach the programme."),
-      );
-    }
-
-    const batch = (await response.json()) as RecommendationBatch;
-    lastBatch = batch;
-    currentIntent = batch.intent;
-    accumulatedReferenceIds = [
-      ...new Set([...accumulatedReferenceIds, ...batch.referenceExclusionIds]),
-    ];
-    exclusions = [...new Set([...exclusions, ...accumulatedReferenceIds])];
-
-    if (batch.candidates.length) {
-      return {
-        ...batch,
-        referenceExclusionIds: accumulatedReferenceIds,
-      };
-    }
-
-    stage += 1;
+  const response = await fetch("/api/recommendations", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    throw new Error(
+      await readError(response, "We couldn't reach the programme."),
+    );
   }
-
-  if (!lastBatch) {
-    throw new Error("Nothing fits every part of tonight's brief yet.");
-  }
-
-  return {
-    ...lastBatch,
-    referenceExclusionIds: accumulatedReferenceIds,
-  };
+  return (await response.json()) as RecommendationBatch;
 }
 
 export function MovieNightExperience() {
   const [view, setView] = useState<View>("prompt");
   const [prompt, setPrompt] = useState("");
-  const [loadingMessage, setLoadingMessage] = useState(
-    "Dimming the house lights…",
-  );
   const [errorMessage, setErrorMessage] = useState("");
+  const [endMessage, setEndMessage] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isChangingRecommendation, setIsChangingRecommendation] =
+    useState(false);
   const [session, setSession] = useState<RecommendationSession | null>(null);
   const [movie, setMovie] = useState<MovieRecommendation | null>(null);
+  const recommendationTransitionTimers = useRef<number[]>([]);
+
+  function clearRecommendationTransition() {
+    recommendationTransitionTimers.current.forEach((timer) =>
+      window.clearTimeout(timer),
+    );
+    recommendationTransitionTimers.current = [];
+    setIsChangingRecommendation(false);
+  }
 
   useEffect(() => {
     const restoreSession = window.setTimeout(() => {
@@ -144,24 +89,37 @@ export function MovieNightExperience() {
         if (!saved) return;
         const parsed = JSON.parse(saved) as SavedSession;
         if (!parsed.session?.intent || !parsed.movie?.id) return;
-
         setPrompt(parsed.session.prompt);
         setSession(parsed.session);
         setMovie(parsed.movie);
-        setView("recommendation");
+        setView(parsed.view ?? "recommendation");
       } catch {
         window.sessionStorage.removeItem(SESSION_KEY);
       }
     }, 0);
-
     return () => window.clearTimeout(restoreSession);
   }, []);
 
   useEffect(() => {
-    if (!session || !movie) return;
-    const saved: SavedSession = { session, movie };
+    if (
+      !session ||
+      !movie ||
+      (view !== "recommendation" && view !== "programme-end")
+    ) {
+      return;
+    }
+    const saved: SavedSession = { session, movie, view };
     window.sessionStorage.setItem(SESSION_KEY, JSON.stringify(saved));
-  }, [session, movie]);
+  }, [session, movie, view]);
+
+  useEffect(
+    () => () => {
+      recommendationTransitionTimers.current.forEach((timer) =>
+        window.clearTimeout(timer),
+      );
+    },
+    [],
+  );
 
   async function startSearch() {
     const trimmedPrompt = prompt.trim();
@@ -171,37 +129,32 @@ export function MovieNightExperience() {
       return;
     }
 
-    setLoadingMessage("Dimming the house lights…");
     setView("loading");
     setErrorMessage("");
+    setEndMessage("");
 
     try {
-      const countdown = delay(1350);
-      const batch = await requestBatchAcrossStages({
+      const batch = await requestBatch({
         prompt: trimmedPrompt,
         intent: null,
         excludedMovieIds: [],
-        startStage: 0,
+        candidateIds: [],
       });
-
-      if (!batch.candidates.length) {
+      if (!batch.recommendations.length) {
         throw new Error(
-          "Nothing fits every part of that brief yet. Try changing one detail.",
+          "Nothing confidently fits every important part of that brief yet. Try changing one detail.",
         );
       }
 
-      const firstMovie = await requestMovie(batch.candidates[0], batch.intent);
-      await countdown;
-
-      setMovie(firstMovie);
+      setMovie(batch.recommendations[0]);
       setSession({
         prompt: trimmedPrompt,
         intent: batch.intent,
-        candidates: batch.candidates,
-        candidateIndex: 0,
+        recommendations: batch.recommendations,
+        recommendationIndex: 0,
+        remainingCandidateIds: batch.remainingCandidateIds,
         shownMovieIds: [],
         referenceExclusionIds: batch.referenceExclusionIds,
-        qualityStage: batch.qualityStage,
         demoMode: batch.demoMode,
       });
       setView("recommendation");
@@ -215,87 +168,105 @@ export function MovieNightExperience() {
     }
   }
 
-  async function tryAnother() {
-    if (!session || !movie) return;
-
+  function tryAnother() {
+    if (!session || !movie || isChangingRecommendation) return;
     const shownMovieIds = [...new Set([...session.shownMovieIds, movie.id])];
-    const nextIndex = session.candidateIndex + 1;
-    setLoadingMessage("Changing the programme…");
-    setView("loading");
+    const nextIndex = session.recommendationIndex + 1;
 
-    try {
-      const transition = delay(650);
-
-      if (nextIndex < session.candidates.length) {
-        const nextMovie = await requestMovie(
-          session.candidates[nextIndex],
-          session.intent,
-        );
-        await transition;
-        setMovie(nextMovie);
+    if (nextIndex < session.recommendations.length) {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        setMovie(session.recommendations[nextIndex]);
         setSession({
           ...session,
-          candidateIndex: nextIndex,
+          recommendationIndex: nextIndex,
           shownMovieIds,
         });
-        setView("recommendation");
         return;
       }
 
-      const nextStage = session.qualityStage + 1;
-      if (nextStage > LAST_QUALITY_STAGE) {
-        throw new Error(
-          "That was the end of tonight's programme. Change the brief and we'll start fresh.",
-        );
-      }
-
-      const excludedMovieIds = [
-        ...new Set([
-          ...shownMovieIds,
-          ...session.referenceExclusionIds,
-          ...session.candidates.map((candidate) => candidate.id),
-        ]),
+      setIsChangingRecommendation(true);
+      recommendationTransitionTimers.current = [
+        window.setTimeout(() => {
+          setMovie(session.recommendations[nextIndex]);
+          setSession({
+            ...session,
+            recommendationIndex: nextIndex,
+            shownMovieIds,
+          });
+        }, 260),
+        window.setTimeout(() => {
+          recommendationTransitionTimers.current = [];
+          setIsChangingRecommendation(false);
+        }, 820),
       ];
-      const batch = await requestBatchAcrossStages({
+      return;
+    }
+
+    setSession({ ...session, shownMovieIds });
+    setEndMessage("");
+    setView("programme-end");
+  }
+
+  async function searchAgain() {
+    if (!session || isRefreshing || !session.remainingCandidateIds.length)
+      return;
+    setIsRefreshing(true);
+    setEndMessage("");
+
+    try {
+      const batch = await requestBatch({
         prompt: null,
         intent: session.intent,
-        excludedMovieIds,
-        startStage: nextStage,
+        candidateIds: session.remainingCandidateIds,
+        excludedMovieIds: [
+          ...new Set([
+            ...session.shownMovieIds,
+            ...session.referenceExclusionIds,
+            ...session.recommendations.map(
+              (recommendation) => recommendation.id,
+            ),
+          ]),
+        ],
       });
 
-      if (!batch.candidates.length) {
-        throw new Error(
-          "That was the end of tonight's programme. Change the brief and we'll start fresh.",
+      if (!batch.recommendations.length) {
+        setSession({
+          ...session,
+          remainingCandidateIds: batch.remainingCandidateIds,
+        });
+        setEndMessage(
+          "There aren't any more confident matches in the original search. Refine the brief to open up a new programme.",
         );
+        return;
       }
 
-      const nextMovie = await requestMovie(batch.candidates[0], session.intent);
-      await transition;
-      setMovie(nextMovie);
+      setMovie(batch.recommendations[0]);
       setSession({
         ...session,
-        candidates: batch.candidates,
-        candidateIndex: 0,
-        shownMovieIds,
-        qualityStage: batch.qualityStage,
+        recommendations: batch.recommendations,
+        recommendationIndex: 0,
+        remainingCandidateIds: batch.remainingCandidateIds,
         demoMode: batch.demoMode,
       });
       setView("recommendation");
     } catch (error) {
-      setErrorMessage(
+      setEndMessage(
         error instanceof Error
           ? error.message
-          : "We couldn't change the programme. Try again.",
+          : "We couldn't prepare the next programme. Try again.",
       );
-      setView("error");
+    } finally {
+      setIsRefreshing(false);
     }
   }
 
-  function changeBrief() {
+  function refinePrompt() {
+    clearRecommendationTransition();
     window.sessionStorage.removeItem(SESSION_KEY);
     setSession(null);
     setMovie(null);
     setErrorMessage("");
+    setEndMessage("");
     setView("prompt");
   }
 
@@ -305,7 +276,7 @@ export function MovieNightExperience() {
         Skip to main content
       </a>
       <header className="site-header">
-        <button className="wordmark" type="button" onClick={changeBrief}>
+        <button className="wordmark" type="button" onClick={refinePrompt}>
           <span aria-hidden="true">MN</span>
           <span>Movie Night</span>
         </button>
@@ -320,22 +291,33 @@ export function MovieNightExperience() {
             onSubmit={startSearch}
           />
         ) : null}
-
-        {view === "loading" ? <Countdown message={loadingMessage} /> : null}
-
+        {view === "loading" ? (
+          <Countdown message="Dimming the house lights…" />
+        ) : null}
         {view === "recommendation" && movie && session ? (
           <MovieReveal
+            key={movie.id}
             movie={movie}
             remaining={Math.max(
-              session.candidates.length - session.candidateIndex - 1,
+              session.recommendations.length - session.recommendationIndex - 1,
               0,
             )}
             demoMode={session.demoMode}
+            isTransitioning={isChangingRecommendation}
             onTryAnother={tryAnother}
-            onChangeBrief={changeBrief}
+            onChangeBrief={refinePrompt}
           />
         ) : null}
-
+        {view === "programme-end" && session ? (
+          <ProgrammeEnd
+            programmeSize={session.recommendations.length}
+            canSearchAgain={session.remainingCandidateIds.length > 0}
+            isSearching={isRefreshing}
+            message={endMessage}
+            onSearchAgain={searchAgain}
+            onRefinePrompt={refinePrompt}
+          />
+        ) : null}
         {view === "error" ? (
           <section className="error-stage" aria-labelledby="error-title">
             <p className="kicker">Programme interrupted</p>
@@ -352,7 +334,7 @@ export function MovieNightExperience() {
               <button
                 className="secondary-button"
                 type="button"
-                onClick={changeBrief}
+                onClick={refinePrompt}
               >
                 Change the brief
               </button>
@@ -360,6 +342,8 @@ export function MovieNightExperience() {
           </section>
         ) : null}
       </main>
+
+      {isChangingRecommendation ? <PopcornTransition /> : null}
 
       <footer className="site-footer">
         <p>

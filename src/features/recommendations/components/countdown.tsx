@@ -5,12 +5,18 @@ type CountdownProps = {
 };
 
 export function Countdown({ message }: CountdownProps) {
-  const [number, setNumber] = useState(3);
+  const [number, setNumber] = useState(10);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
-      setNumber((current) => (current <= 1 ? 3 : current - 1));
-    }, 430);
+      setNumber((current) => {
+        if (current <= 1) {
+          window.clearInterval(interval);
+          return 1;
+        }
+        return current - 1;
+      });
+    }, 1_000);
 
     return () => window.clearInterval(interval);
   }, []);
@@ -24,7 +30,11 @@ export function Countdown({ message }: CountdownProps) {
       <div className="countdown__copy" role="status" aria-live="polite">
         <p className="kicker">Please take your seats</p>
         <h1 id="countdown-title">{message}</h1>
-        <p>The feature presentation is almost ready.</p>
+        <p>
+          {number > 1
+            ? "Finding and ranking the strongest matches."
+            : "Finalising tonight's programme…"}
+        </p>
       </div>
     </section>
   );

@@ -22,13 +22,14 @@ confident choice quickly, without reproducing another endless catalogue.
 
 1. Ask one visible question: “What are you in the mood for tonight?”
 2. Interpret the free-text answer into validated movie criteria.
-3. Play a short, accessible cinema-countdown transition while the request runs.
-4. Reveal one highly rated recommendation with UK certification and
+3. Play a single, accessible ten-count cinema transition while the initial
+   request runs.
+4. Reveal one intent-ranked recommendation with UK certification and
    availability information.
-5. Let the viewer try the next film in a finite eight-film queue without
-   re-entering the prompt.
-6. When the queue is exhausted, broaden the quality policy in a controlled
-   order without repeating a referenced or shown film.
+5. Let the viewer move instantly through a finite programme of up to five
+   enriched films without re-entering the prompt.
+6. When the programme is exhausted, offer to refine the prompt or rerank the
+   unused candidates from the original search without repeating discovery.
 
 ## Experience principles
 

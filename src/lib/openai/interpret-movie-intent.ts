@@ -10,18 +10,23 @@ import type { MovieIntent } from "@/features/recommendations/types";
 import { getServerEnv } from "@/lib/env";
 import { ProviderError } from "@/lib/provider-error";
 
-const SYSTEM_PROMPT = `You translate a viewer's natural-language movie request into search intent.
+const SYSTEM_PROMPT = `You translate a viewer's natural-language movie request into precise, auditable search intent.
 
 Rules:
 - Extract preferences only; do not recommend any titles.
 - Put every movie used as a comparison, example, positive reference, or negative reference in referenceMovies so it can be excluded.
-- For a positive reference movie, infer a small number of its broadly recognised genre, mood, and story traits into the other fields. Do not copy cast, director, franchise, or character names into keywordTerms.
-- Turn abstract moods into one to three concrete, TMDB-searchable story or theme concepts in keywordTerms when doing so would materially narrow the search. Do not add unrelated concepts merely to fill the array.
+- Separate hard genre constraints from preferences. A directly requested genre ("a comedy") belongs in requiredGenres; a genre merely inferred from a mood, style, or reference belongs in preferredGenres.
+- Express every meaningful non-genre request in preferences. Preserve the user's actual meaning: mood, tone, theme, setting, cast, pace, or style. Mark directly stated, central requirements primary and explicit; mark helpful implications secondary and inferred.
+- For a positive reference movie, add two to five broadly recognised similarityTraits that explain what the user is likely asking to carry over. Do not infer cast, director, franchise, or character names unless the user explicitly requests them.
+- Turn abstract intent into two to eight concrete, TMDB-searchable keyword concepts when they materially improve retrieval. Do not add unrelated concepts merely to fill the array.
 - Use only the allowed genre enum values.
-- Moods are short lowercase descriptions such as tense, comforting, cerebral, funny, or visually spectacular.
-- Keyword terms should be concise TMDB-searchable concepts such as time travel, heist, courtroom, or found family.
 - Use a two-letter ISO 639-1 original-language code only when the viewer explicitly asks for a language.
 - Do not infer a year, runtime, or language constraint unless the viewer expresses it.
+- "set in" describes story setting, not production country or original language.
+- "all-star cast" or "ensemble cast" is a primary cast preference; do not reduce it to a genre.
+- "sexy" is a primary tone preference. Add relevant concepts such as sensuality or eroticism, without treating any adult-rated drama as a match.
+- "chick flick" is a style request normally associated with female-centred relationships, romance, friendship, or comedy; it is not satisfied by an unrelated action film with incidental UK locations.
+- For "comedy like Anchorman with an all-star cast", require comedy and preserve absurdist ensemble comedy plus star-studded cast as primary preferences. A dark film merely tagged comedy is not a match.
 - Return empty arrays and nulls for unspecified criteria.`;
 
 function mapOpenAIError(error: unknown): never {

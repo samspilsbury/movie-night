@@ -1,14 +1,16 @@
 import type {
+  DiscoverySource,
   MovieCandidate,
   MovieIntent,
   MovieRecommendation,
   WatchProvider,
 } from "@/features/recommendations/types";
 import {
+  DISCOVERY_MINIMUM_RATING,
+  DISCOVERY_MINIMUM_VOTES,
   genreIdsToNames,
   genreNamesToIds,
-  QUALITY_STAGES,
-  rankCandidates,
+  rankCandidatePool,
 } from "@/features/recommendations/quality";
 import { getServerEnv } from "@/lib/env";
 import { ProviderError } from "@/lib/provider-error";
@@ -27,6 +29,7 @@ type TmdbDiscoverMovie = {
   vote_average: number;
   vote_count: number;
   popularity: number;
+  original_language?: string;
 };
 
 type TmdbProvider = {
@@ -48,9 +51,12 @@ type TmdbDetails = {
   vote_average: number;
   vote_count: number;
   popularity: number;
+  original_language?: string;
+  production_countries?: Array<{ iso_3166_1: string; name: string }>;
   belongs_to_collection: { id: number } | null;
+  keywords?: { keywords: Array<{ id: number; name: string }> };
   credits?: {
-    cast: Array<{ name: string; order: number }>;
+    cast: Array<{ name: string; order: number; popularity?: number }>;
     crew: Array<{ name: string; job: string }>;
   };
   release_dates?: {
@@ -79,15 +85,12 @@ async function tmdbFetch<T>(
   query: Record<string, string | number | boolean | undefined> = {},
 ): Promise<T> {
   const { TMDB_API_TOKEN } = getServerEnv();
-  if (!TMDB_API_TOKEN) {
-    throw new Error("TMDB_API_TOKEN is not configured.");
-  }
+  if (!TMDB_API_TOKEN) throw new Error("TMDB_API_TOKEN is not configured.");
 
   const url = new URL(`${TMDB_API_BASE}${path}`);
   for (const [key, value] of Object.entries(query)) {
-    if (value !== undefined && value !== "") {
+    if (value !== undefined && value !== "")
       url.searchParams.set(key, String(value));
-    }
   }
 
   let response: Response;
@@ -156,19 +159,19 @@ function selectReferenceMatch(
       normalizeMovieTitle(movie.title) === expectedTitle ||
       normalizeMovieTitle(movie.original_title) === expectedTitle,
   );
-
   if (reference.year) {
-    const expectedYear = String(reference.year);
-    const exactYearAndTitle = titleMatches.find((movie) =>
-      movie.release_date?.startsWith(expectedYear),
+    const exact = titleMatches.find((movie) =>
+      movie.release_date?.startsWith(String(reference.year)),
     );
-    if (exactYearAndTitle) return exactYearAndTitle;
+    if (exact) return exact;
   }
-
   return titleMatches[0] ?? results[0] ?? null;
 }
 
-function toCandidate(movie: TmdbDiscoverMovie): MovieCandidate {
+function toCandidate(
+  movie: TmdbDiscoverMovie,
+  source: DiscoverySource,
+): MovieCandidate {
   return {
     id: movie.id,
     title: movie.title,
@@ -181,22 +184,26 @@ function toCandidate(movie: TmdbDiscoverMovie): MovieCandidate {
     voteAverage: movie.vote_average,
     voteCount: movie.vote_count,
     popularity: movie.popularity,
+    originalLanguage: movie.original_language ?? null,
+    discoverySources: [source],
     score: 0,
   };
 }
 
 async function resolveKeywordIds(terms: string[]): Promise<number[]> {
   const results = await Promise.all(
-    terms.slice(0, 6).map(async (term) => {
+    terms.slice(0, 8).map(async (term) => {
       const response = await tmdbFetch<{
         results: Array<{ id: number; name: string }>;
       }>("/search/keyword", { query: term, page: 1 });
-
-      return response.results[0]?.id ?? null;
+      const expected = normalizeMovieTitle(term);
+      const exact = response.results.find(
+        (keyword) => normalizeMovieTitle(keyword.name) === expected,
+      );
+      return exact?.id ?? response.results[0]?.id ?? null;
     }),
   );
-
-  return results.filter((id): id is number => id !== null);
+  return [...new Set(results.filter((id): id is number => id !== null))];
 }
 
 export async function resolveReferenceExclusions(
@@ -214,38 +221,82 @@ export async function resolveReferenceExclusions(
           page: 1,
         },
       );
-
       const match = selectReferenceMatch(search.results, reference);
       if (!match) return [];
-
       const details = await tmdbFetch<TmdbDetails>(`/movie/${match.id}`, {
         language: "en-GB",
       });
-
       if (!details.belongs_to_collection) return [match.id];
-
-      const collection = await tmdbFetch<{
-        parts: Array<{ id: number }>;
-      }>(`/collection/${details.belongs_to_collection.id}`, {
-        language: "en-GB",
-      });
-
+      const collection = await tmdbFetch<{ parts: Array<{ id: number }> }>(
+        `/collection/${details.belongs_to_collection.id}`,
+        { language: "en-GB" },
+      );
       return [match.id, ...collection.parts.map((part) => part.id)];
     }),
   );
-
   return [...new Set(exclusionGroups.flat())];
 }
 
-export async function discoverMovies(
+type DiscoveryLane = {
+  source: DiscoverySource;
+  page: number;
+  genres?: string;
+  keywords?: string;
+};
+
+function discoveryLanes(
+  genreQuery: string,
+  keywordQuery: string,
+): DiscoveryLane[] {
+  if (genreQuery && keywordQuery) {
+    return [
+      {
+        source: "focused",
+        page: 1,
+        genres: genreQuery,
+        keywords: keywordQuery,
+      },
+      {
+        source: "focused",
+        page: 2,
+        genres: genreQuery,
+        keywords: keywordQuery,
+      },
+      { source: "keyword", page: 1, keywords: keywordQuery },
+      { source: "genre", page: 1, genres: genreQuery },
+    ];
+  }
+  if (keywordQuery) {
+    return [
+      { source: "keyword", page: 1, keywords: keywordQuery },
+      { source: "keyword", page: 2, keywords: keywordQuery },
+      { source: "broad", page: 1 },
+      { source: "broad", page: 2 },
+    ];
+  }
+  if (genreQuery) {
+    return [
+      { source: "genre", page: 1, genres: genreQuery },
+      { source: "genre", page: 2, genres: genreQuery },
+      { source: "broad", page: 1 },
+      { source: "broad", page: 2 },
+    ];
+  }
+  return [1, 2, 3, 4].map((page) => ({ source: "broad" as const, page }));
+}
+
+export async function discoverCandidatePool(
   intent: MovieIntent,
-  qualityStage: number,
   excludedIds: number[],
 ): Promise<MovieCandidate[]> {
-  const quality = QUALITY_STAGES[qualityStage] ?? QUALITY_STAGES[0];
   const keywordIds = await resolveKeywordIds(intent.keywordTerms);
-  const includedGenreIds = genreNamesToIds(intent.includedGenres);
+  const requiredGenreIds = genreNamesToIds(intent.requiredGenres);
+  const preferredGenreIds = genreNamesToIds(intent.preferredGenres);
   const excludedGenreIds = genreNamesToIds(intent.excludedGenres);
+  const genreQuery = requiredGenreIds.length
+    ? requiredGenreIds.join(",")
+    : preferredGenreIds.join("|");
+  const keywordQuery = keywordIds.join("|");
   const today = new Date().toISOString().slice(0, 10);
   const requestedMaximumDate = intent.maximumYear
     ? `${intent.maximumYear}-12-31`
@@ -253,34 +304,48 @@ export async function discoverMovies(
   const maximumReleaseDate =
     requestedMaximumDate < today ? requestedMaximumDate : today;
 
-  const response = await tmdbFetch<{ results: TmdbDiscoverMovie[] }>(
-    "/discover/movie",
-    {
-      include_adult: true,
-      include_video: false,
-      language: "en-GB",
-      page: 1,
-      sort_by: "vote_average.desc",
-      "vote_average.gte": quality.minimumRating,
-      "vote_count.gte": quality.minimumVotes,
-      with_genres: includedGenreIds.join("|"),
-      without_genres: excludedGenreIds.join(","),
-      with_keywords: keywordIds.join("|"),
-      "primary_release_date.gte": intent.minimumYear
-        ? `${intent.minimumYear}-01-01`
-        : undefined,
-      "primary_release_date.lte": maximumReleaseDate,
-      "with_runtime.lte": intent.maximumRuntimeMinutes ?? undefined,
-      with_original_language: intent.originalLanguage ?? undefined,
-    },
+  const responses = await Promise.all(
+    discoveryLanes(genreQuery, keywordQuery).map(async (lane) => {
+      const response = await tmdbFetch<{ results: TmdbDiscoverMovie[] }>(
+        "/discover/movie",
+        {
+          include_adult: true,
+          include_video: false,
+          language: "en-GB",
+          page: lane.page,
+          sort_by: "popularity.desc",
+          "vote_average.gte": DISCOVERY_MINIMUM_RATING,
+          "vote_count.gte": DISCOVERY_MINIMUM_VOTES,
+          with_genres: lane.genres,
+          without_genres: excludedGenreIds.join(","),
+          with_keywords: lane.keywords,
+          "primary_release_date.gte": intent.minimumYear
+            ? `${intent.minimumYear}-01-01`
+            : undefined,
+          "primary_release_date.lte": maximumReleaseDate,
+          "with_runtime.lte": intent.maximumRuntimeMinutes ?? undefined,
+          with_original_language: intent.originalLanguage ?? undefined,
+        },
+      );
+      return response.results.map((movie) => toCandidate(movie, lane.source));
+    }),
   );
 
-  return rankCandidates(
-    response.results.map(toCandidate),
-    intent,
-    quality.minimumVotes,
-    excludedIds,
-  );
+  const deduplicated = new Map<number, MovieCandidate>();
+  for (const candidate of responses.flat()) {
+    const existing = deduplicated.get(candidate.id);
+    if (existing) {
+      existing.discoverySources = [
+        ...new Set([
+          ...existing.discoverySources,
+          ...candidate.discoverySources,
+        ]),
+      ];
+    } else {
+      deduplicated.set(candidate.id, candidate);
+    }
+  }
+  return rankCandidatePool([...deduplicated.values()], intent, excludedIds);
 }
 
 function mapProvider(provider: TmdbProvider): WatchProvider {
@@ -307,7 +372,6 @@ function findCertification(
     (entry) => entry.iso_3166_1 === region,
   );
   if (!regionalReleases) return null;
-
   const preference = [3, 4, 5, 2, 1, 6];
   return (
     [...regionalReleases.release_dates]
@@ -319,50 +383,24 @@ function findCertification(
   );
 }
 
-export function buildMatchReason(
-  intent: MovieIntent,
-  genres: string[],
-): string {
-  const details: string[] = [];
-  if (intent.moods.length) {
-    details.push(intent.moods.slice(0, 2).join(" and "));
-  }
-
-  const matchedGenres = intent.includedGenres.filter((genre) =>
-    genres.map((value) => value.toLowerCase()).includes(genre),
-  );
-  if (matchedGenres.length) {
-    details.push(matchedGenres.slice(0, 2).join(" and "));
-  }
-
-  if (intent.maximumRuntimeMinutes) {
-    details.push(`under ${intent.maximumRuntimeMinutes} minutes`);
-  }
-
-  if (details.length === 0) {
-    return "A highly rated film selected to fit tonight's brief.";
-  }
-
-  const [first, ...rest] = details;
-  const joined = [first, ...rest].join(", ");
-  return `A highly rated match for the ${joined} film you described.`;
-}
-
-export async function getMovieRecommendation(
-  id: number,
-  intent: MovieIntent,
+async function enrichMovie(
+  candidate: MovieCandidate | number,
 ): Promise<MovieRecommendation> {
   const { region } = getServerEnv();
+  const id = typeof candidate === "number" ? candidate : candidate.id;
   const details = await tmdbFetch<TmdbDetails>(`/movie/${id}`, {
     language: "en-GB",
-    append_to_response: "credits,release_dates,watch/providers",
+    append_to_response: "credits,keywords,release_dates,watch/providers",
   });
-
   const regionalProviders = details["watch/providers"]?.results[region];
-  const genres = details.genres.map((genre) => genre.name);
-  const director = details.credits?.crew.find(
-    (person) => person.job === "Director",
-  )?.name;
+  const sortedCast = [...(details.credits?.cast ?? [])].sort(
+    (left, right) => left.order - right.order,
+  );
+  const baseScore = typeof candidate === "number" ? 0 : candidate.score;
+  const discoverySources =
+    typeof candidate === "number"
+      ? (["broad"] as const)
+      : candidate.discoverySources;
 
   return {
     id: details.id,
@@ -376,17 +414,32 @@ export async function getMovieRecommendation(
     voteAverage: details.vote_average,
     voteCount: details.vote_count,
     popularity: details.popularity,
-    score: 0,
+    originalLanguage: details.original_language ?? null,
+    discoverySources: [...discoverySources],
+    score: baseScore,
     runtimeMinutes: details.runtime,
     certification: findCertification(details, region),
-    genres,
-    director: director ?? null,
-    cast:
-      details.credits?.cast
-        .sort((left, right) => left.order - right.order)
-        .slice(0, 3)
-        .map((person) => person.name) ?? [],
-    matchReason: buildMatchReason(intent, genres),
+    genres: details.genres.map((genre) => genre.name),
+    director:
+      details.credits?.crew.find((person) => person.job === "Director")?.name ??
+      null,
+    cast: sortedCast.slice(0, 5).map((person) => person.name),
+    castPopularity: Number(
+      sortedCast
+        .slice(0, 5)
+        .reduce((total, person) => total + (person.popularity ?? 0), 0)
+        .toFixed(2),
+    ),
+    keywordNames:
+      details.keywords?.keywords.map((keyword) => keyword.name) ?? [],
+    productionCountries:
+      details.production_countries?.flatMap((country) => [
+        country.name,
+        country.iso_3166_1,
+      ]) ?? [],
+    relevanceScore: 0,
+    matchedCriteria: [],
+    matchReason: "Selected for tonight's brief.",
     availability: {
       stream: uniqueProviders(regionalProviders?.flatrate),
       free: uniqueProviders([
@@ -398,6 +451,45 @@ export async function getMovieRecommendation(
       tmdbUrl: regionalProviders?.link ?? null,
     },
   };
+}
+
+export async function enrichMovieCandidates(
+  candidates: Array<MovieCandidate | number>,
+): Promise<MovieRecommendation[]> {
+  const results = await Promise.allSettled(candidates.map(enrichMovie));
+  const movies = results.flatMap((result) =>
+    result.status === "fulfilled" ? [result.value] : [],
+  );
+  if (!movies.length) {
+    const failure = results.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
+  }
+  return movies;
+}
+
+export async function getMovieRecommendation(
+  id: number,
+  intent: MovieIntent,
+): Promise<MovieRecommendation> {
+  const movie = await enrichMovie(id);
+  return {
+    ...movie,
+    matchReason: buildMatchReason(intent, movie.genres),
+  };
+}
+
+export function buildMatchReason(
+  intent: MovieIntent,
+  genres: string[],
+): string {
+  const desired = [...intent.requiredGenres, ...intent.preferredGenres].filter(
+    (genre) => genres.map((value) => value.toLowerCase()).includes(genre),
+  );
+  const preferences = intent.preferences.map((preference) => preference.value);
+  const details = [...preferences, ...desired].slice(0, 3);
+  return details.length
+    ? `Matches the brief through ${details.join(", ")}.`
+    : "A strong catalogue match with dependable audience support.";
 }
 
 export function candidateGenreNames(candidate: MovieCandidate): string[] {

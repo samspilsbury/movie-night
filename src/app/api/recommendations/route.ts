@@ -1,16 +1,19 @@
 import { NextResponse } from "next/server";
 import { ZodError } from "zod";
 
-import { QUALITY_STAGES } from "@/features/recommendations/quality";
+import { buildRecommendationBatch } from "@/features/recommendations/recommend";
 import { recommendationRequestSchema } from "@/features/recommendations/schemas";
-import type { RecommendationBatch } from "@/features/recommendations/types";
 import { getDemoCandidates, demoIntent } from "@/lib/demo/movies";
 import { getServerEnv } from "@/lib/env";
 import { interpretMovieIntent } from "@/lib/openai/interpret-movie-intent";
 import { logProviderError, ProviderError } from "@/lib/provider-error";
-import { discoverMovies, resolveReferenceExclusions } from "@/lib/tmdb/client";
+import {
+  discoverCandidatePool,
+  resolveReferenceExclusions,
+} from "@/lib/tmdb/client";
 
 export const runtime = "nodejs";
+export const maxDuration = 60;
 
 export async function POST(request: Request) {
   try {
@@ -23,29 +26,26 @@ export async function POST(request: Request) {
         ? demoIntent(input.prompt ?? "")
         : await interpretMovieIntent(input.prompt ?? ""));
 
+    const continuing = input.intent !== null && input.candidateIds.length > 0;
     const referenceExclusionIds =
-      input.intent !== null
+      continuing || env.demoMode
         ? []
-        : env.demoMode
-          ? []
-          : await resolveReferenceExclusions(intent);
+        : await resolveReferenceExclusions(intent);
     const allExcludedIds = [
       ...new Set([...input.excludedMovieIds, ...referenceExclusionIds]),
     ];
 
-    const candidates = env.demoMode
-      ? getDemoCandidates(intent, input.qualityStage, allExcludedIds)
-      : await discoverMovies(intent, input.qualityStage, allExcludedIds);
-    const quality = QUALITY_STAGES[input.qualityStage] ?? QUALITY_STAGES[0];
-
-    const response: RecommendationBatch = {
-      candidates,
+    const pool = continuing
+      ? input.candidateIds.filter((id) => !allExcludedIds.includes(id))
+      : env.demoMode
+        ? getDemoCandidates(intent, allExcludedIds)
+        : await discoverCandidatePool(intent, allExcludedIds);
+    const response = await buildRecommendationBatch({
+      pool,
       intent,
       referenceExclusionIds,
-      qualityStage: input.qualityStage,
-      qualityLabel: quality.label,
       demoMode: env.demoMode,
-    };
+    });
 
     return NextResponse.json(response);
   } catch (error) {

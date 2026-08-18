@@ -60,6 +60,7 @@ standalone browser specimen at `docs/design/specimen.html`.
 
 - [MVP stack](docs/architecture/decisions/0002-adopt-nextjs-typescript-mvp-stack.md)
 - [Live recommendation pipeline](docs/architecture/decisions/0003-adopt-live-recommendation-pipeline.md)
+- [Relevance-first candidate reranking](docs/architecture/decisions/0005-adopt-relevance-first-reranking.md)
 - [Vercel deployment](docs/architecture/decisions/0004-deploy-mvp-on-vercel.md)
 
 Analytics and public-launch monitoring remain future decisions.

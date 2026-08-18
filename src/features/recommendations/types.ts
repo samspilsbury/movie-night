@@ -19,17 +19,37 @@ export const GENRE_NAMES = [
   "western",
 ] as const;
 
+export const PREFERENCE_CATEGORIES = [
+  "mood",
+  "tone",
+  "theme",
+  "setting",
+  "cast",
+  "pace",
+  "style",
+] as const;
+
 export type GenreName = (typeof GENRE_NAMES)[number];
+export type PreferenceCategory = (typeof PREFERENCE_CATEGORIES)[number];
 
 export type ReferenceMovie = {
   title: string;
   year: number | null;
+  similarityTraits: string[];
+};
+
+export type IntentPreference = {
+  category: PreferenceCategory;
+  value: string;
+  priority: "primary" | "secondary";
+  source: "explicit" | "inferred";
 };
 
 export type MovieIntent = {
-  includedGenres: GenreName[];
+  requiredGenres: GenreName[];
+  preferredGenres: GenreName[];
   excludedGenres: GenreName[];
-  moods: string[];
+  preferences: IntentPreference[];
   keywordTerms: string[];
   referenceMovies: ReferenceMovie[];
   minimumYear: number | null;
@@ -37,6 +57,8 @@ export type MovieIntent = {
   maximumRuntimeMinutes: number | null;
   originalLanguage: string | null;
 };
+
+export type DiscoverySource = "focused" | "keyword" | "genre" | "broad";
 
 export type MovieCandidate = {
   id: number;
@@ -50,6 +72,8 @@ export type MovieCandidate = {
   voteAverage: number;
   voteCount: number;
   popularity: number;
+  originalLanguage: string | null;
+  discoverySources: DiscoverySource[];
   score: number;
 };
 
@@ -73,15 +97,19 @@ export type MovieRecommendation = MovieCandidate & {
   genres: string[];
   director: string | null;
   cast: string[];
+  castPopularity: number;
+  keywordNames: string[];
+  productionCountries: string[];
+  relevanceScore: number;
+  matchedCriteria: string[];
   matchReason: string;
   availability: WatchAvailability;
 };
 
 export type RecommendationBatch = {
-  candidates: MovieCandidate[];
+  recommendations: MovieRecommendation[];
+  remainingCandidateIds: number[];
   intent: MovieIntent;
   referenceExclusionIds: number[];
-  qualityStage: number;
-  qualityLabel: string;
   demoMode: boolean;
 };

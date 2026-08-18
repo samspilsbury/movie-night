@@ -214,9 +214,14 @@ light font weight for hierarchy.
 ### Programme change
 
 “Try another film” preserves the user's brief and replaces only the
-recommendation. After repeated retries, offer “Change the brief” instead of
-continuing indefinitely. This protects the product from becoming another doom
-scroll.
+recommendation without another loading transition. After five films, present a
+clear end-of-programme choice: rerank unused candidates from the same search or
+refine the brief. This protects the product from becoming another doom scroll.
+
+When another enriched recommendation is ready, a brief popcorn curtain masks
+the visual swap. It is decorative, never communicates required information,
+does not trigger on the first reveal or the end-of-programme screen, and is
+removed entirely when reduced motion is requested.
 
 ### Status and recovery
 

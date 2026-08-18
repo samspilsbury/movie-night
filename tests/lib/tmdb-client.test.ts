@@ -1,12 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { MovieIntent } from "@/features/recommendations/types";
-import { discoverMovies, resolveReferenceExclusions } from "@/lib/tmdb/client";
+import {
+  discoverCandidatePool,
+  resolveReferenceExclusions,
+} from "@/lib/tmdb/client";
 
 const baseIntent: MovieIntent = {
-  includedGenres: ["thriller", "science fiction"],
+  requiredGenres: ["thriller"],
+  preferredGenres: ["science fiction"],
   excludedGenres: ["horror"],
-  moods: ["tense"],
+  preferences: [
+    {
+      category: "mood",
+      value: "tense",
+      priority: "primary",
+      source: "explicit",
+    },
+  ],
   keywordTerms: [],
   referenceMovies: [],
   minimumYear: 1990,
@@ -27,6 +38,7 @@ type TmdbMovieFixture = {
   vote_average: number;
   vote_count: number;
   popularity: number;
+  original_language: string;
 };
 
 function tmdbMovie(overrides: Partial<TmdbMovieFixture>) {
@@ -42,6 +54,7 @@ function tmdbMovie(overrides: Partial<TmdbMovieFixture>) {
     vote_average: 7.8,
     vote_count: 1_000,
     popularity: 20,
+    original_language: "en",
     ...overrides,
   };
 }
@@ -68,21 +81,23 @@ describe("TMDB client", () => {
     vi.restoreAllMocks();
   });
 
-  it("applies the strict quality policy in the initial Discover request", async () => {
-    const fetchMock = vi.fn().mockResolvedValue(
-      jsonResponse({
-        results: Array.from({ length: 10 }, (_, index) =>
-          tmdbMovie({
-            id: index + 1,
-            title: `Film ${index + 1}`,
-            vote_count: 1_000 + index,
-          }),
-        ),
-      }),
+  it("uses a lower retrieval floor and preserves hard constraints across lanes", async () => {
+    const fetchMock = vi.fn().mockImplementation(() =>
+      Promise.resolve(
+        jsonResponse({
+          results: Array.from({ length: 10 }, (_, index) =>
+            tmdbMovie({
+              id: index + 1,
+              title: `Film ${index + 1}`,
+              vote_count: 1_000 + index,
+            }),
+          ),
+        }),
+      ),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    const candidates = await discoverMovies(baseIntent, 0, [2]);
+    const candidates = await discoverCandidatePool(baseIntent, [2]);
     const [request, options] = fetchMock.mock.calls[0] as [
       URL,
       RequestInit & { next?: { revalidate: number } },
@@ -90,9 +105,9 @@ describe("TMDB client", () => {
     const url = new URL(request);
 
     expect(url.pathname).toBe("/3/discover/movie");
-    expect(url.searchParams.get("vote_average.gte")).toBe("7.2");
-    expect(url.searchParams.get("vote_count.gte")).toBe("500");
-    expect(url.searchParams.get("with_genres")).toBe("53|878");
+    expect(url.searchParams.get("vote_average.gte")).toBe("6.2");
+    expect(url.searchParams.get("vote_count.gte")).toBe("100");
+    expect(url.searchParams.get("with_genres")).toBe("53");
     expect(url.searchParams.get("without_genres")).toBe("27");
     expect(url.searchParams.get("with_runtime.lte")).toBe("120");
     expect(url.searchParams.get("primary_release_date.gte")).toBe("1990-01-01");
@@ -104,7 +119,8 @@ describe("TMDB client", () => {
       Authorization: "Bearer test-token",
     });
     expect(options.next?.revalidate).toBe(3_600);
-    expect(candidates).toHaveLength(8);
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(candidates).toHaveLength(9);
     expect(candidates.map((movie) => movie.id)).not.toContain(2);
   });
 
@@ -133,7 +149,9 @@ describe("TMDB client", () => {
 
     const exclusions = await resolveReferenceExclusions({
       ...baseIntent,
-      referenceMovies: [{ title: "Inception", year: 2010 }],
+      referenceMovies: [
+        { title: "Inception", year: 2010, similarityTraits: ["dream heist"] },
+      ],
     });
 
     expect(exclusions).toEqual([12, 13, 14]);
@@ -147,7 +165,7 @@ describe("TMDB client", () => {
       vi.fn().mockResolvedValue(jsonResponse({ success: false }, 401)),
     );
 
-    await expect(discoverMovies(baseIntent, 0, [])).rejects.toMatchObject({
+    await expect(discoverCandidatePool(baseIntent, [])).rejects.toMatchObject({
       provider: "tmdb",
       code: "authentication",
       responseStatus: 503,

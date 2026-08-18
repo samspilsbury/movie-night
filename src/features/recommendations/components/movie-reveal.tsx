@@ -7,6 +7,7 @@ type MovieRevealProps = {
   movie: MovieRecommendation;
   remaining: number;
   demoMode: boolean;
+  isTransitioning: boolean;
   onTryAnother: () => void;
   onChangeBrief: () => void;
 };
@@ -43,6 +44,7 @@ export function MovieReveal({
   movie,
   remaining,
   demoMode,
+  isTransitioning,
   onTryAnother,
   onChangeBrief,
 }: MovieRevealProps) {
@@ -60,7 +62,11 @@ export function MovieReveal({
   }, [movie.id]);
 
   return (
-    <section className="auditorium" aria-labelledby="feature-title">
+    <section
+      className="auditorium"
+      aria-labelledby="feature-title"
+      aria-busy={isTransitioning}
+    >
       <div className="house-lights" aria-hidden="true">
         {Array.from({ length: 7 }, (_, index) => (
           <span key={index} />
@@ -176,6 +182,7 @@ export function MovieReveal({
               <button
                 className="secondary-button"
                 type="button"
+                disabled={isTransitioning}
                 onClick={onTryAnother}
               >
                 Try another film

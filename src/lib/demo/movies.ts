@@ -3,16 +3,24 @@ import type {
   MovieIntent,
   MovieRecommendation,
 } from "@/features/recommendations/types";
-import {
-  QUALITY_STAGES,
-  rankCandidates,
-} from "@/features/recommendations/quality";
+import { rankCandidatePool } from "@/features/recommendations/quality";
 import { buildMatchReason } from "@/lib/tmdb/client";
 
 const BASE_MOVIES: Array<
   Omit<
     MovieRecommendation,
-    "score" | "matchReason" | "availability" | "posterPath" | "backdropPath"
+    | "score"
+    | "matchReason"
+    | "availability"
+    | "posterPath"
+    | "backdropPath"
+    | "originalLanguage"
+    | "discoverySources"
+    | "castPopularity"
+    | "keywordNames"
+    | "productionCountries"
+    | "relevanceScore"
+    | "matchedCriteria"
   > & {
     posterPath: string | null;
     backdropPath: string | null;
@@ -237,18 +245,19 @@ const BASE_MOVIES: Array<
 
 export function demoIntent(prompt: string): MovieIntent {
   const lower = prompt.toLowerCase();
-  const genrePairs: Array<[MovieIntent["includedGenres"][number], string[]]> = [
-    ["action", ["action", "explosive"]],
-    ["comedy", ["comedy", "funny", "laugh"]],
-    ["drama", ["drama", "emotional"]],
-    ["horror", ["horror", "scary"]],
-    ["mystery", ["mystery", "whodunnit"]],
-    ["romance", ["romance", "romantic"]],
-    ["science fiction", ["sci-fi", "science fiction", "space"]],
-    ["thriller", ["thriller", "tense"]],
-  ];
+  const genrePairs: Array<[MovieIntent["preferredGenres"][number], string[]]> =
+    [
+      ["action", ["action", "explosive"]],
+      ["comedy", ["comedy", "funny", "laugh"]],
+      ["drama", ["drama", "emotional"]],
+      ["horror", ["horror", "scary"]],
+      ["mystery", ["mystery", "whodunnit"]],
+      ["romance", ["romance", "romantic"]],
+      ["science fiction", ["sci-fi", "science fiction", "space"]],
+      ["thriller", ["thriller", "tense"]],
+    ];
 
-  const includedGenres = genrePairs
+  const preferredGenres = genrePairs
     .filter(([, terms]) => terms.some((term) => lower.includes(term)))
     .map(([genre]) => genre);
 
@@ -257,16 +266,25 @@ export function demoIntent(prompt: string): MovieIntent {
   ).map((movie) => ({
     title: movie.title,
     year: movie.releaseDate ? Number(movie.releaseDate.slice(0, 4)) : null,
+    similarityTraits: [],
   }));
 
   return {
-    includedGenres,
+    requiredGenres: [],
+    preferredGenres,
     excludedGenres: [],
-    moods: lower.includes("tense")
-      ? ["tense"]
-      : lower.includes("comfort")
-        ? ["comforting"]
-        : ["absorbing"],
+    preferences: [
+      {
+        category: "mood",
+        value: lower.includes("tense")
+          ? "tense"
+          : lower.includes("comfort")
+            ? "comforting"
+            : "absorbing",
+        priority: "primary",
+        source: "explicit",
+      },
+    ],
     keywordTerms: [],
     referenceMovies,
     minimumYear: null,
@@ -278,13 +296,11 @@ export function demoIntent(prompt: string): MovieIntent {
 
 export function getDemoCandidates(
   intent: MovieIntent,
-  qualityStage: number,
   excludedIds: number[],
 ): MovieCandidate[] {
   const references = new Set(
     intent.referenceMovies.map((reference) => reference.title.toLowerCase()),
   );
-  const quality = QUALITY_STAGES[qualityStage] ?? QUALITY_STAGES[0];
   const candidates: MovieCandidate[] = BASE_MOVIES.filter(
     (movie) => !references.has(movie.title.toLowerCase()),
   ).map((movie) => ({
@@ -299,10 +315,12 @@ export function getDemoCandidates(
     voteAverage: movie.voteAverage,
     voteCount: movie.voteCount,
     popularity: movie.popularity,
+    originalLanguage: "en",
+    discoverySources: ["broad"],
     score: 0,
   }));
 
-  return rankCandidates(candidates, intent, quality.minimumVotes, excludedIds);
+  return rankCandidatePool(candidates, intent, excludedIds);
 }
 
 export function getDemoMovie(
@@ -314,7 +332,14 @@ export function getDemoMovie(
 
   return {
     ...movie,
+    originalLanguage: "en",
+    discoverySources: ["broad"],
     score: 0,
+    castPopularity: 80,
+    keywordNames: movie.genres.map((genre) => genre.toLowerCase()),
+    productionCountries: ["United States of America", "US"],
+    relevanceScore: 70,
+    matchedCriteria: intent.preferences.map((preference) => preference.value),
     matchReason: buildMatchReason(intent, movie.genres),
   };
 }
