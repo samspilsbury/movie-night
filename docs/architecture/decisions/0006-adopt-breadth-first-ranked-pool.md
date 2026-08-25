@@ -42,6 +42,10 @@ the underlying recommendation pool, not in a catalogue-style interface.
   shortlist, allowing hard validation against detailed metadata to still yield
   a ranked pool of up to 50 films. The 6.2 rating and 100-vote catalogue floor
   remains in place.
+- Up to 30 enrichment slots are reserved for candidates found by focused,
+  keyword, or reference-cast lanes. The remaining slots come from the global
+  pre-rank. This prevents highly rated broad results from crowding out targeted
+  movies before detailed TMDB evidence can be assessed.
 - The complete pool is enriched once with TMDB details, credits, keywords,
   certifications, and UK watch availability.
 - Hard-valid movies receive one stable global score: 65% squared intent
@@ -50,6 +54,15 @@ the underlying recommendation pool, not in a catalogue-style interface.
   from overtaking a materially better brief match while keeping soft misses in
   the pool. A relevance lead of 15 points or more is protected before the
   blended score is compared. Popularity and vote count only break ties.
+- Deterministic concept families connect natural-language preferences to
+  equivalent TMDB evidence where literal matching would be misleading. For
+  example, sexy or sensual intent recognises eroticism, seduction, lust, and
+  closely related evidence without treating a rating or romance genre alone as
+  a match. Underage, grooming, paedophilia, and sexual-abuse evidence
+  contradicts this concept and cannot count as a positive sensual match.
+- If no candidate contains evidence for any primary preference, source
+  agreement and retrieval relevance determine the provisional order instead
+  of silently collapsing to an audience-rating leaderboard.
 - The synchronous model reranking call is removed. Structured Outputs still
   interprets the brief, while bounded deterministic code performs the
   auditable filtering, joining, and ranking work.

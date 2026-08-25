@@ -108,12 +108,53 @@ describe("recommendation quality", () => {
     expect(ranked.map((movie) => movie.id)).not.toContain(4);
   });
 
+  it("reserves enrichment space for targeted retrieval evidence", () => {
+    const broadCandidates = Array.from({ length: 70 }, (_, index) =>
+      candidate({
+        id: index + 1,
+        voteAverage: 9,
+        voteCount: 30_000,
+        discoverySources: ["broad"],
+      }),
+    );
+    const targetedCandidates = Array.from({ length: 8 }, (_, index) =>
+      candidate({
+        id: 100 + index,
+        voteAverage: 6.2,
+        voteCount: 100,
+        discoverySources: ["keyword"],
+      }),
+    );
+
+    const ranked = rankCandidatePool(
+      [...broadCandidates, ...targetedCandidates],
+      intent({
+        preferences: [
+          {
+            category: "tone",
+            value: "sexy and sensual",
+            priority: "primary",
+            source: "explicit",
+          },
+        ],
+      }),
+      [],
+    );
+
+    expect(ranked).toHaveLength(60);
+    expect(
+      targetedCandidates.every((targeted) =>
+        ranked.some((movie) => movie.id === targeted.id),
+      ),
+    ).toBe(true);
+  });
+
   it("does not treat a prestigious drama as a match for a sexy film", () => {
     const request = intent({
       preferences: [
         {
           category: "tone",
-          value: "sensual",
+          value: "sexy and sensual",
           priority: "primary",
           source: "explicit",
         },
@@ -132,18 +173,75 @@ describe("recommendation quality", () => {
       id: 2,
       title: "Body Heat",
       overview: "A seductive affair draws a lawyer into an erotic murder plot.",
-      keywordNames: ["sensual", "seduction", "eroticism"],
+      keywordNames: ["seduction", "eroticism", "lust"],
+    });
+    const underageContradiction = recommendation({
+      id: 3,
+      title: "An unsafe sensual match",
+      overview:
+        "An older man becomes obsessed with a woman's teenaged daughter.",
+      keywordNames: [
+        "eroticism",
+        "seduction",
+        "older man younger woman relationship",
+        "sex with a minor",
+      ],
     });
 
     const ranked = applyCandidateGrades(
-      [shawshank, bodyHeat],
+      [shawshank, bodyHeat, underageContradiction],
       request,
-      [shawshank, bodyHeat].map((movie) => deterministicGrade(movie, request)),
+      [shawshank, bodyHeat, underageContradiction].map((movie) =>
+        deterministicGrade(movie, request),
+      ),
     );
-    expect(ranked.map((movie) => movie.title)).toEqual([
-      "Body Heat",
-      "The Shawshank Redemption",
-    ]);
+    expect(ranked[0]?.title).toBe("Body Heat");
+    expect(ranked[0]?.relevanceScore).toBe(100);
+    expect(
+      ranked.find((movie) => movie.id === underageContradiction.id)
+        ?.relevanceScore,
+    ).toBe(0);
+    expect(
+      ranked.find((movie) => movie.id === shawshank.id)?.relevanceScore,
+    ).toBe(0);
+  });
+
+  it("does not fall back to ratings when no primary preference has evidence", () => {
+    const request = intent({
+      preferences: [
+        {
+          category: "mood",
+          value: "an intentionally unmatched mood",
+          priority: "primary",
+          source: "explicit",
+        },
+      ],
+    });
+    const prestigiousBroadResult = recommendation({
+      id: 1,
+      title: "Prestigious broad result",
+      voteAverage: 9.3,
+      voteCount: 30_000,
+      discoverySources: ["broad"],
+      score: 90,
+    });
+    const targetedResult = recommendation({
+      id: 2,
+      title: "Targeted retrieval result",
+      voteAverage: 6.3,
+      voteCount: 120,
+      discoverySources: ["keyword"],
+      score: 40,
+    });
+    const candidates = [prestigiousBroadResult, targetedResult];
+
+    expect(
+      applyCandidateGrades(
+        candidates,
+        request,
+        candidates.map((movie) => deterministicGrade(movie, request)),
+      ).map((movie) => movie.id),
+    ).toEqual([targetedResult.id, prestigiousBroadResult.id]);
   });
 
   it("does not let ratings overtake a materially stronger intent match", () => {

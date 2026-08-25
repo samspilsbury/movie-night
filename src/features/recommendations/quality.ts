@@ -10,6 +10,7 @@ export const DISCOVERY_MINIMUM_VOTES = 100;
 export const CANDIDATE_POOL_SIZE = 60;
 export const RANKED_POOL_SIZE = 50;
 export const RECOMMENDATION_COUNT = 5;
+const TARGETED_CANDIDATE_RESERVE = 30;
 
 const GENRE_IDS: Record<string, number> = {
   action: 28,
@@ -71,7 +72,9 @@ function meaningfulWords(value: string): string[] {
   return normalise(value)
     .split(" ")
     .filter(
-      (word) => word.length > 2 && !["film", "movie", "with"].includes(word),
+      (word) =>
+        word.length > 2 &&
+        !["and", "but", "film", "for", "movie", "the", "with"].includes(word),
     );
 }
 
@@ -83,6 +86,12 @@ const PSYCHOLOGICAL_REQUEST_PATTERN =
   /psychological|mind games|unreliable perception|mental tension/;
 const PSYCHOLOGICAL_EVIDENCE_PATTERN =
   /psychological|mind games?|gaslight|hypnot|amnesia|memory|loss of sense of reality|dual identity|alter ego|split personality|dissociative identity|double life|paranoi|obsessive compulsive disorder|mental illness|manipulation|interrogation|unreliable|different accounts|deception|deceived|con game|double cross|twisted game|hidden motive/;
+const SENSUAL_REQUEST_PATTERN =
+  /\b(sexy|sensual|sensuality|erotic|eroticism|seductive|seduction|steamy|sultry)\b/;
+const SENSUAL_EVIDENCE_PATTERN =
+  /\b(sensual|sensuality|erotic|eroticism|erotica|seductive|seduction|seduce|lust|lustful|steamy|sultry|provocative|sexual (desire|tension|obsession)|passionate affair|femme fatale)\b/;
+const SENSUAL_CONTRADICTION_PATTERN =
+  /\b(paedoph\w*|pedoph\w*|underage|minor (girl|boy)|sex with a minor|teenaged? (girl|daughter)|older man younger woman|child sexual|sexual abuse|statutory rape|grooming)\b/;
 const UNITED_KINGDOM_REQUEST_PATTERN =
   /united kingdom|\buk\b|britain|british|england|scotland|wales|northern ireland/;
 const UNITED_KINGDOM_EVIDENCE_PATTERN =
@@ -112,6 +121,13 @@ function textMatches(value: string, corpus: string): boolean {
   if (
     PSYCHOLOGICAL_REQUEST_PATTERN.test(phrase) &&
     PSYCHOLOGICAL_EVIDENCE_PATTERN.test(corpus)
+  ) {
+    return true;
+  }
+  if (
+    SENSUAL_REQUEST_PATTERN.test(phrase) &&
+    SENSUAL_EVIDENCE_PATTERN.test(corpus) &&
+    !SENSUAL_CONTRADICTION_PATTERN.test(corpus)
   ) {
     return true;
   }
@@ -298,14 +314,28 @@ export function rankCandidatePool(
   excludedIds: Iterable<number>,
 ): MovieCandidate[] {
   const exclusions = new Set(excludedIds);
-  return candidates
+  const scored = candidates
     .filter((candidate) => !exclusions.has(candidate.id))
     .map((candidate) => ({
       ...candidate,
       score: candidateScore(candidate, intent),
     }))
-    .sort((left, right) => right.score - left.score)
-    .slice(0, CANDIDATE_POOL_SIZE);
+    .sort((left, right) => right.score - left.score);
+  const targeted = scored
+    .filter((candidate) =>
+      candidate.discoverySources.some((source) =>
+        ["cast", "focused", "keyword"].includes(source),
+      ),
+    )
+    .slice(0, TARGETED_CANDIDATE_RESERVE);
+  const targetedIds = new Set(targeted.map((candidate) => candidate.id));
+
+  return [
+    ...targeted,
+    ...scored.filter((candidate) => !targetedIds.has(candidate.id)),
+  ]
+    .slice(0, CANDIDATE_POOL_SIZE)
+    .sort((left, right) => right.score - left.score);
 }
 
 export function failsHardConstraints(
@@ -416,6 +446,16 @@ export function rankAllCandidates(
   grades: CandidateGrade[],
 ): MovieRecommendation[] {
   const gradesById = new Map(grades.map((grade) => [grade.id, grade]));
+  const primaryPreferenceCount = intent.preferences.filter(
+    (preference) => preference.priority === "primary",
+  ).length;
+  const hasPrimaryEvidence =
+    primaryPreferenceCount === 0 ||
+    candidates.some((candidate) => {
+      const grade =
+        gradesById.get(candidate.id) ?? deterministicGrade(candidate, intent);
+      return grade.missingPrimaryCriteria.length < primaryPreferenceCount;
+    });
 
   return candidates
     .map((candidate) => {
@@ -423,11 +463,14 @@ export function rankAllCandidates(
         gradesById.get(candidate.id) ?? deterministicGrade(candidate, intent);
       const relevanceScore = grade.relevanceScore;
       const relevanceConfidence = Math.pow(relevanceScore / 100, 2);
+      const retrievalScore = Math.max(0, Math.min(candidate.score, 100));
       const finalScore = grade.contradictions.length
         ? 0
-        : relevanceConfidence * 65 +
-          qualitySignal(candidate) * 30 +
-          sourceAgreementSignal(candidate) * 5;
+        : hasPrimaryEvidence
+          ? relevanceConfidence * 65 +
+            qualitySignal(candidate) * 30 +
+            sourceAgreementSignal(candidate) * 5
+          : sourceAgreementSignal(candidate) * 70 + retrievalScore * 0.3;
       return {
         ...candidate,
         score: Number(finalScore.toFixed(3)),
