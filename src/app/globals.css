@@ -1222,10 +1222,26 @@ button:disabled {
 }
 
 @media (min-width: 40.01rem) {
+  .theatre {
+    width: min(90vw, 45rem);
+  }
+
+  .theatre__title {
+    min-height: clamp(7.25rem, 18cqi, 9.75rem);
+  }
+
   .theatre__title h1 {
     max-width: none;
-    font-size: clamp(3.2rem, 7.5cqi, 5.5rem);
+    font-size: clamp(3.2rem, 8.25cqi, 5rem);
     white-space: nowrap;
+  }
+
+  .marquee {
+    padding-block: clamp(var(--space-lg), 4cqi, var(--space-2xl));
+  }
+
+  .movie-form textarea {
+    min-height: 10rem;
   }
 }
 
@@ -1353,8 +1369,8 @@ button:disabled {
   }
 
   .theatre__title {
-    min-height: 5rem;
-    padding-block: 0.75rem;
+    min-height: 6rem;
+    padding-block: var(--space-md);
   }
 
   .theatre__title h1 {
@@ -1362,7 +1378,7 @@ button:disabled {
   }
 
   .marquee {
-    padding-block: 1.15rem;
+    padding-block: var(--space-lg);
   }
 
   .marquee__now-showing {
@@ -1370,7 +1386,7 @@ button:disabled {
   }
 
   .movie-form textarea {
-    min-height: 5.5rem;
+    min-height: 9.5rem;
   }
 
   .theatre__entrance {

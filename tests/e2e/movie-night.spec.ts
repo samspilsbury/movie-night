@@ -107,6 +107,9 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     const title = document
       .querySelector(".theatre__title")!
       .getBoundingClientRect();
+    const promptBox = document
+      .querySelector(".marquee")!
+      .getBoundingClientRect();
     const heading = document
       .querySelector(".theatre__title h1")!
       .getBoundingClientRect();
@@ -127,6 +130,10 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
       headingRight: heading.right,
       titleLeft: title.left,
       titleRight: title.right,
+      titleWidth: title.width,
+      titleHeight: title.height,
+      promptBoxWidth: promptBox.width,
+      promptBoxHeight: promptBox.height,
       questionSize: fontSize(".marquee__now-showing"),
     };
   });
@@ -139,6 +146,20 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     expect(promptLayout.headingLineCount).toBe(1);
     expect(promptLayout.headingLeft).toBeGreaterThan(promptLayout.titleLeft);
     expect(promptLayout.headingRight).toBeLessThan(promptLayout.titleRight);
+    expect(promptLayout.titleWidth).toBeLessThanOrEqual(40 * 16);
+    expect(promptLayout.promptBoxWidth).toBeLessThanOrEqual(45 * 16);
+    expect(promptLayout.titleHeight / promptLayout.titleWidth).toBeGreaterThan(
+      0.16,
+    );
+    expect(
+      promptLayout.promptBoxHeight / promptLayout.promptBoxWidth,
+    ).toBeGreaterThan(0.52);
+    expect(promptLayout.titleWidth / promptLayout.titleHeight).toBeGreaterThan(
+      3,
+    );
+    expect(
+      promptLayout.promptBoxWidth / promptLayout.promptBoxHeight,
+    ).toBeGreaterThan(1.5);
   }
 
   await brief.fill("A tense, clever thriller under two hours");
