@@ -67,7 +67,7 @@ export function MoviePrompt({
                 required
                 autoFocus
                 aria-labelledby="movie-brief-title"
-                placeholder="A tense, clever thriller like Inception, under two hours, with a proper ending…"
+                placeholder="A tense thriller like Inception, under 2 hours, with a twist…"
               />
               <button
                 className="feature-button"
