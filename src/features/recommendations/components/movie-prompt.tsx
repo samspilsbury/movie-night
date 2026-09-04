@@ -43,7 +43,7 @@ export function MoviePrompt({
         </div>
 
         <div className="theatre__title">
-          <h1>Now showing</h1>
+          <h1>❤️ Movie Night ❤️</h1>
         </div>
 
         <div className="marquee">
