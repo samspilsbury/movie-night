@@ -98,12 +98,22 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     "What are you in the mood for?",
   );
   await expect(
-    page.getByRole("heading", { name: "Now showing" }),
+    page.getByRole("heading", { name: "❤️ Movie Night ❤️" }),
   ).toBeVisible();
 
   const promptLayout = await page.evaluate(() => {
     const foyer = document.querySelector(".foyer")!.getBoundingClientRect();
     const theatre = document.querySelector(".theatre")!.getBoundingClientRect();
+    const title = document
+      .querySelector(".theatre__title")!
+      .getBoundingClientRect();
+    const heading = document
+      .querySelector(".theatre__title h1")!
+      .getBoundingClientRect();
+    const headingRange = document.createRange();
+    headingRange.selectNodeContents(
+      document.querySelector(".theatre__title h1")!,
+    );
     const fontSize = (selector: string) =>
       Number.parseFloat(
         window.getComputedStyle(document.querySelector(selector)!).fontSize,
@@ -111,17 +121,24 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     return {
       foyerCenter: foyer.top + foyer.height / 2,
       theatreCenter: theatre.top + theatre.height / 2,
-      nowShowingSize: fontSize(".theatre__title h1"),
+      headingSize: fontSize(".theatre__title h1"),
+      headingLineCount: headingRange.getClientRects().length,
+      headingLeft: heading.left,
+      headingRight: heading.right,
+      titleLeft: title.left,
+      titleRight: title.right,
       questionSize: fontSize(".marquee__now-showing"),
     };
   });
-  expect(promptLayout.nowShowingSize).toBeGreaterThan(
-    promptLayout.questionSize,
-  );
+  expect(promptLayout.headingSize).toBeGreaterThan(promptLayout.questionSize);
   if ((page.viewportSize()?.width ?? 0) <= 640) {
     expect(
       Math.abs(promptLayout.foyerCenter - promptLayout.theatreCenter),
     ).toBeLessThan(24);
+  } else {
+    expect(promptLayout.headingLineCount).toBe(1);
+    expect(promptLayout.headingLeft).toBeGreaterThan(promptLayout.titleLeft);
+    expect(promptLayout.headingRight).toBeLessThan(promptLayout.titleRight);
   }
 
   await brief.fill("A tense, clever thriller under two hours");

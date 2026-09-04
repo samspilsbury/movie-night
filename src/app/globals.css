@@ -1221,6 +1221,14 @@ button:disabled {
   }
 }
 
+@media (min-width: 40.01rem) {
+  .theatre__title h1 {
+    max-width: none;
+    font-size: clamp(3.2rem, 7.5cqi, 5.5rem);
+    white-space: nowrap;
+  }
+}
+
 @media (max-width: 40rem) {
   .site-header > p {
     display: none;
