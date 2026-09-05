@@ -60,6 +60,27 @@ function recommendation(id: number, title: string) {
   };
 }
 
+test("reveals Shrek after a three-count for the romantic easter egg", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await page
+    .getByLabel("What are you in the mood for?")
+    .fill("something romantic");
+
+  const startedAt = Date.now();
+  await page.getByRole("button", { name: "Find tonight's film" }).click();
+
+  await expect(page.locator(".countdown__number")).toHaveText("3");
+  await expect(page.locator("#feature-title")).toHaveText("Shrek", {
+    timeout: 5_000,
+  });
+
+  const revealDuration = Date.now() - startedAt;
+  expect(revealDuration).toBeGreaterThanOrEqual(2_800);
+  expect(revealDuration).toBeLessThan(5_000);
+});
+
 test("ranks five films, skips instantly, and reuses the original pool", async ({
   page,
 }) => {

@@ -3,6 +3,7 @@ import { ZodError } from "zod";
 
 import { buildRecommendationBatch } from "@/features/recommendations/recommend";
 import { recommendationRequestSchema } from "@/features/recommendations/schemas";
+import { getRomanticShrekBatch } from "@/features/recommendations/easter-eggs/romantic-shrek";
 import { getDemoCandidates, demoIntent } from "@/lib/demo/movies";
 import { getServerEnv } from "@/lib/env";
 import { interpretMovieIntent } from "@/lib/openai/interpret-movie-intent";
@@ -46,6 +47,13 @@ export async function POST(request: Request) {
   try {
     const body: unknown = await request.json();
     const input = recommendationRequestSchema.parse(body);
+    const easterEggBatch =
+      input.intent === null ? getRomanticShrekBatch(input.prompt) : null;
+    if (easterEggBatch) {
+      logStage("romantic_shrek_easter_egg_complete");
+      return NextResponse.json(easterEggBatch);
+    }
+
     const env = getServerEnv();
     const interpretedIntent =
       input.intent ??

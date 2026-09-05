@@ -7,6 +7,10 @@ import { MoviePrompt } from "./movie-prompt";
 import { MovieReveal } from "./movie-reveal";
 import { PopcornTransition } from "./popcorn-transition";
 import { ProgrammeEnd } from "./programme-end";
+import {
+  isRomanticShrekPrompt,
+  ROMANTIC_SHREK_COUNTDOWN_SECONDS,
+} from "../easter-eggs/romantic-shrek";
 import type {
   MovieIntent,
   MovieRecommendation,
@@ -14,6 +18,7 @@ import type {
 } from "../types";
 
 const SESSION_KEY = "movie-night:recommendation-session:v4";
+const DEFAULT_COUNTDOWN_SECONDS = 10;
 
 type View = "prompt" | "loading" | "recommendation" | "programme-end" | "error";
 
@@ -61,6 +66,10 @@ async function requestBatch(body: {
     );
   }
   return (await response.json()) as RecommendationBatch;
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, milliseconds));
 }
 
 export function MovieNightExperience() {
@@ -134,12 +143,19 @@ export function MovieNightExperience() {
     setEndMessage("");
 
     try {
-      const batch = await requestBatch({
+      const isRomanticShrekSearch = isRomanticShrekPrompt(trimmedPrompt);
+      const batchRequest = requestBatch({
         prompt: trimmedPrompt,
         intent: null,
         excludedMovieIds: [],
         candidateIds: [],
       });
+      const [batch] = await Promise.all([
+        batchRequest,
+        isRomanticShrekSearch
+          ? wait(ROMANTIC_SHREK_COUNTDOWN_SECONDS * 1_000)
+          : Promise.resolve(),
+      ]);
       if (!batch.recommendations.length) {
         throw new Error(
           "Nothing confidently fits every important part of that brief yet. Try changing one detail.",
@@ -256,7 +272,14 @@ export function MovieNightExperience() {
           />
         ) : null}
         {view === "loading" ? (
-          <Countdown message="Dimming the house lights…" />
+          <Countdown
+            message="Dimming the house lights…"
+            startingNumber={
+              isRomanticShrekPrompt(prompt)
+                ? ROMANTIC_SHREK_COUNTDOWN_SECONDS
+                : DEFAULT_COUNTDOWN_SECONDS
+            }
+          />
         ) : null}
         {view === "recommendation" && movie && session ? (
           <MovieReveal
