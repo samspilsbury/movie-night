@@ -60,27 +60,6 @@ function recommendation(id: number, title: string) {
   };
 }
 
-test("reveals Shrek after a three-count for the romantic easter egg", async ({
-  page,
-}) => {
-  await page.goto("/");
-  await page
-    .getByLabel("What are you in the mood for?")
-    .fill("something romantic");
-
-  const startedAt = Date.now();
-  await page.getByRole("button", { name: "Find tonight's film" }).click();
-
-  await expect(page.locator(".countdown__number")).toHaveText("3");
-  await expect(page.locator("#feature-title")).toHaveText("Shrek", {
-    timeout: 5_000,
-  });
-
-  const revealDuration = Date.now() - startedAt;
-  expect(revealDuration).toBeGreaterThanOrEqual(2_800);
-  expect(revealDuration).toBeLessThan(5_000);
-});
-
 test("ranks five films, skips instantly, and reuses the original pool", async ({
   page,
 }) => {
@@ -119,25 +98,12 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     "What are you in the mood for?",
   );
   await expect(
-    page.getByRole("heading", { name: "❤️ Movie Night ❤️" }),
+    page.getByRole("heading", { name: "Movie Night" }),
   ).toBeVisible();
 
   const promptLayout = await page.evaluate(() => {
     const foyer = document.querySelector(".foyer")!.getBoundingClientRect();
     const theatre = document.querySelector(".theatre")!.getBoundingClientRect();
-    const title = document
-      .querySelector(".theatre__title")!
-      .getBoundingClientRect();
-    const promptBox = document
-      .querySelector(".marquee")!
-      .getBoundingClientRect();
-    const heading = document
-      .querySelector(".theatre__title h1")!
-      .getBoundingClientRect();
-    const headingRange = document.createRange();
-    headingRange.selectNodeContents(
-      document.querySelector(".theatre__title h1")!,
-    );
     const fontSize = (selector: string) =>
       Number.parseFloat(
         window.getComputedStyle(document.querySelector(selector)!).fontSize,
@@ -146,15 +112,6 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
       foyerCenter: foyer.top + foyer.height / 2,
       theatreCenter: theatre.top + theatre.height / 2,
       headingSize: fontSize(".theatre__title h1"),
-      headingLineCount: headingRange.getClientRects().length,
-      headingLeft: heading.left,
-      headingRight: heading.right,
-      titleLeft: title.left,
-      titleRight: title.right,
-      titleWidth: title.width,
-      titleHeight: title.height,
-      promptBoxWidth: promptBox.width,
-      promptBoxHeight: promptBox.height,
       questionSize: fontSize(".marquee__now-showing"),
     };
   });
@@ -163,24 +120,6 @@ test("ranks five films, skips instantly, and reuses the original pool", async ({
     expect(
       Math.abs(promptLayout.foyerCenter - promptLayout.theatreCenter),
     ).toBeLessThan(24);
-  } else {
-    expect(promptLayout.headingLineCount).toBe(1);
-    expect(promptLayout.headingLeft).toBeGreaterThan(promptLayout.titleLeft);
-    expect(promptLayout.headingRight).toBeLessThan(promptLayout.titleRight);
-    expect(promptLayout.titleWidth).toBeLessThanOrEqual(40 * 16);
-    expect(promptLayout.promptBoxWidth).toBeLessThanOrEqual(45 * 16);
-    expect(promptLayout.titleHeight / promptLayout.titleWidth).toBeGreaterThan(
-      0.16,
-    );
-    expect(
-      promptLayout.promptBoxHeight / promptLayout.promptBoxWidth,
-    ).toBeGreaterThan(0.52);
-    expect(promptLayout.titleWidth / promptLayout.titleHeight).toBeGreaterThan(
-      3,
-    );
-    expect(
-      promptLayout.promptBoxWidth / promptLayout.promptBoxHeight,
-    ).toBeGreaterThan(1.5);
   }
 
   await brief.fill("A tense, clever thriller under two hours");

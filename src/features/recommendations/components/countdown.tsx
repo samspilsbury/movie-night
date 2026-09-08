@@ -2,11 +2,10 @@ import { useEffect, useState } from "react";
 
 type CountdownProps = {
   message: string;
-  startingNumber?: number;
 };
 
-export function Countdown({ message, startingNumber = 10 }: CountdownProps) {
-  const [number, setNumber] = useState(startingNumber);
+export function Countdown({ message }: CountdownProps) {
+  const [number, setNumber] = useState(10);
 
   useEffect(() => {
     const interval = window.setInterval(() => {
