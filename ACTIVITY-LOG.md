@@ -1,5 +1,10 @@
 # Activity log
 
+## 2026-09-16 — GitHub Actions Node 24 compatibility
+
+- Updated the Supabase keep-alive workflow from `actions/checkout@v4` to
+  `actions/checkout@v7`, removing the deprecated Node.js 20 action runtime.
+
 ## 2026-09-16 — Supabase keep-alive automation
 
 - Added a dependency-free Node.js keep-alive script that updates one fixed,
