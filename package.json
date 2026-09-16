@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "supabase:keepalive": "node scripts/keep-supabase-active.mjs",
     "format": "prettier --check .",
     "format:write": "prettier --write .",
     "check": "npm run format && npm run lint && npm run typecheck && npm run test && npm run build"
